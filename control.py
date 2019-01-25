@@ -64,8 +64,11 @@ def config_load(path):
         if service['cmd'].endswith('.js'):
             print('prefix node.js?')
         if not service['cmd'].startswith('/'):
-            print('relative path in cmd')
-            service['cmd'] = os.path.join(config['root'], service['cmd'])
+            if os.path.exists(os.path.join(config['root'], service['cmd'])):
+                print('relative path in cmd')
+                service['cmd'] = os.path.join(config['root'], service['cmd'])
+            else:
+                print('check path?')
     return config
 
 def config_service(args):
