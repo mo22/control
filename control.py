@@ -283,15 +283,15 @@ def main():
     parser_run.set_defaults(func=do_run)
 
     parser_start = subparsers.add_parser('start', help='start service')
-    parser_start.add_argument('name', help='name of service')
+    parser_start.add_argument('name', nargs='+', help='name of service')
     parser_start.set_defaults(func=do_start)
 
     parser_stop = subparsers.add_parser('stop', help='stop service')
-    parser_stop.add_argument('name', help='name of service')
+    parser_stop.add_argument('name', nargs='+', help='name of service')
     parser_stop.set_defaults(func=do_stop)
 
     parser_restart = subparsers.add_parser('restart', help='restart service')
-    parser_restart.add_argument('name', help='name of service')
+    parser_restart.add_argument('name', nargs='+', help='name of service')
     parser_restart.set_defaults(func=do_restart)
 
     parser_status = subparsers.add_parser('status', help='status service')
@@ -304,7 +304,7 @@ def main():
     parser_list.set_defaults(func=do_list)
 
     parser_log = subparsers.add_parser('log', help='log service')
-    parser_log.add_argument('name', help='name of service')
+    parser_log.add_argument('name', nargs='+', help='name of service')
     parser_log.add_argument('--follow', '-f', action='store_true', help='follow')
     parser_log.set_defaults(func=do_log)
 
