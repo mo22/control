@@ -80,7 +80,7 @@ def config_get_services(config, filter):
     if filter in config['services']:
         return [ config['services'][filter] ]
     if filter == 'all':
-        return config['services']
+        return config['services'].values()
     else:
         return []
 
@@ -141,8 +141,10 @@ def systemd_status(config, service):
         subprocess.check_output(['systemctl', 'is-active', name])
         return 'running'
     except subprocess.CalledProcessError as e:
+        if e.returncode == 3:
+            return 'stopped'
         print('error code', e.returncode)
-        return 'stopped'
+        return 'unknown'
 
 
 
@@ -178,11 +180,10 @@ def do_run(args):
 def do_start(args):
     config = config_load(args.config)
     services = config_get_services(config, args.name)
-    assert len(services) == 1
-    service = services[0]
-    name = config['name'] + '-' + service['name']
-    systemd_install(config, service)
-    subprocess.check_call(['sudo', 'systemctl', 'start', name])
+    for service in services:
+        name = config['name'] + '-' + service['name']
+        systemd_install(config, service)
+        subprocess.check_call(['sudo', 'systemctl', 'start', name])
 
 
 
@@ -236,12 +237,16 @@ def do_list(args):
 
 def do_log(args):
     config = config_load(args.config)
-    for service in config['services'].values():
+    procs = []
+    services = config_get_services(config, args.name)
+    for service in services:
         name = config['name'] + '-' + service['name']
-        args = ['sudo', 'journalctl', '-u', name]
-        if args.follow: args += ['-f']
-        print(args)
-
+        cmd = ['sudo', 'journalctl', '-u', name]
+        if args.follow: cmd += ['-f']
+        proc = subprocess.Popen(cmd) # really?
+        procs.append(proc)
+    for proc in procs:
+        proc.wait()
     # (config, service) = config_service(args)
     # name = config['name'] + '-' + service['name']
     # if args.follow:
