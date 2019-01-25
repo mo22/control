@@ -62,21 +62,27 @@ def config_load(path):
         if not 'cwd' in service:
             service['cwd'] = config['root']
         if service['cmd'].endswith('.js'):
-            print('prefix node.js?')
+            service['args'] = [service['cmd']] + service['args']
+            service['cmd'] = 'node'
         if not service['cmd'].startswith('/'):
-            if os.path.exists(os.path.join(config['root'], service['cmd'])):
-                print('relative path in cmd')
-                service['cmd'] = os.path.join(config['root'], service['cmd'])
-            else:
-                print('check path?')
+            tmp = os.path.join(config['root'], service['cmd'])
+            if os.path.exists(tmp):
+                # print('relative path in cmd', service['cmd'], tmp)
+                service['cmd'] = tmp
+        if not service['cmd'].startswith('/'):
+            tmp = subprocess.check_output(['which', service['cmd']]).strip()
+            if os.path.exists(tmp):
+                # print('resolve path', service['cmd'], tmp)
+                service['cmd'] = tmp
     return config
 
-def config_service(args):
-    config = config_load(args.config)
-    service = config['services'].get(args.name, None)
-    if not service:
-        raise Exception('service %s not defined' % (args.name, ))
-    return (config, service)
+def config_get_services(config, filter):
+    if filter in config['services']:
+        return [ config['services'][filter] ]
+    if filter == 'all':
+        return config['services'].values()
+    else:
+        return []
 
 
 
@@ -92,7 +98,10 @@ def systemd_template(config, service):
     tpl += 'Restart=on-failure\n'
     tpl += 'User=root\n'
     tpl += 'SyslogIdentifier=%s\n' % (name, )
-    tpl += 'LimitNOFILE=32768\n'
+    if 'nofile' in service:
+        tpl += 'LimitNOFILE=%d\n' % (service['nofile'], )
+    if 'user' in service:
+        tpl += 'User=%s\n' % (service['user'], )
     cwd = os.path.realpath(service.get('cwd', '.'))
     tmp = [ service['cmd'] ] + service['args']
     execStart = ' '.join([ pipes.quote(i) for i in tmp ])
@@ -115,18 +124,42 @@ def systemd_install(config, service):
                 return
     except:
         pass
-    with open(target, 'w') as fp:
-        fp.write(tpl)
-    subprocess.check_call(['systemctl', 'enable', name])
+    if True:
+        proc = subprocess.Popen(['sudo', 'tee', target], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        (output, output_err) = proc.communicate(tpl)
+    else:
+        with open(target, 'w') as fp:
+            fp.write(tpl)
+    subprocess.check_call(['sudo', 'systemctl', 'enable', name])
+
+def systemd_uninstall(config, service):
+    pass
+
+def systemd_status(config, service):
+    name = config['name'] + '-' + service['name']
+    try:
+        subprocess.check_output(['systemctl', 'is-active', name])
+        return 'running'
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 3:
+            return 'stopped'
+        print('error code', e.returncode)
+        return 'unknown'
+
 
 
 def do_dump(args):
     config = config_load(args.config)
-    print(yaml.dumps(config))
+    print(yaml.dump(config))
+
 
 
 def do_run(args):
-    (config, service) = config_service(args)
+    config = config_load(args.config)
+    services = config_get_services(config, args.name)
+    assert len(services) == 1
+    service = services[0]
+    # @TODO: run multiple commands in parallel?
     cwd = os.path.realpath(service.get('cwd', '.'))
     cmd = service['cmd']
     args = service.get('args', [])
@@ -145,53 +178,81 @@ def do_run(args):
 
 
 def do_start(args):
-    (config, service) = config_service(args)
-    name = config['name'] + '-' + service['name']
-    systemd_install(config, service)
-    subprocess.check_call(['systemctl', 'start', name])
+    config = config_load(args.config)
+    services = config_get_services(config, args.name)
+    for service in services:
+        name = config['name'] + '-' + service['name']
+        systemd_install(config, service)
+        subprocess.check_call(['sudo', 'systemctl', 'start', name])
 
 
 
 def do_stop(args):
-    (config, service) = config_service(args)
-    name = config['name'] + '-' + service['name']
-    systemd_install(config, service)
-    subprocess.check_call(['systemctl', 'stop', name])
+    config = config_load(args.config)
+    services = config_get_services(config, args.name)
+    for service in services:
+        name = config['name'] + '-' + service['name']
+        systemd_install(config, service)
+        subprocess.check_call(['sudo', 'systemctl', 'stop', name])
 
 
 
 def do_restart(args):
-    (config, service) = config_service(args)
-    name = config['name'] + '-' + service['name']
-    systemd_install(config, service)
-    subprocess.check_call(['systemctl', 'restart', name])
+    config = config_load(args.config)
+    services = config_get_services(config, args.name)
+    for service in services:
+        name = config['name'] + '-' + service['name']
+        systemd_install(config, service)
+        # also start if not running?
+        subprocess.check_call(['sudo', 'systemctl', 'restart', name])
+
 
 
 def do_status(args):
-    (config, service) = config_service(args)
-    name = config['name'] + '-' + service['name']
-    # subprocess.check_call(['systemctl', 'status', '--no-pager', name])
-    subprocess.check_call(['systemctl', 'is-active', name])
-    # exit code?
+    config = config_load(args.config)
+    services = config_get_services(config, args.name)
+    for service in services:
+        status = systemd_status(config, service)
+        print(service['name'], status)
+        if args.full:
+            try:
+                subprocess.check_call(['systemctl', 'status', '--no-pager', name])
+            except subprocess.CalledProcessError as e:
+                pass
 
 
 
 def do_list(args):
     config = config_load(args.config)
     for service in config['services'].values():
-        name = config['name'] + '-' + service['name']
-        print(name)
-        subprocess.check_call(['systemctl', 'status', '--no-pager', name])
+        status = systemd_status(config, service)
+        print(service['name'], status)
+        if args.full:
+            try:
+                subprocess.check_call(['systemctl', 'status', '--no-pager', name])
+            except subprocess.CalledProcessError as e:
+                pass
 
 
 
 def do_log(args):
-    (config, service) = config_service(args)
-    name = config['name'] + '-' + service['name']
-    if args.follow:
-        subprocess.check_call(['journalctl', '-f', '-u', name])
-    else:
-        subprocess.check_call(['journalctl', '-u', name])
+    config = config_load(args.config)
+    procs = []
+    services = config_get_services(config, args.name)
+    for service in services:
+        name = config['name'] + '-' + service['name']
+        cmd = ['sudo', 'journalctl', '-u', name]
+        if args.follow: cmd += ['-f']
+        proc = subprocess.Popen(cmd) # really?
+        procs.append(proc)
+    for proc in procs:
+        proc.wait()
+    # (config, service) = config_service(args)
+    # name = config['name'] + '-' + service['name']
+    # if args.follow:
+    #     subprocess.check_call(['journalctl', '-f', '-u', name])
+    # else:
+    #     subprocess.check_call(['journalctl', '-u', name])
 
 
 
@@ -225,9 +286,11 @@ def main():
 
     parser_status = subparsers.add_parser('status', help='status service')
     parser_status.add_argument('name', help='name of service')
+    parser_status.add_argument('--full', action='store_true')
     parser_status.set_defaults(func=do_status)
 
     parser_list = subparsers.add_parser('list', help='list service')
+    parser_list.add_argument('--full', action='store_true')
     parser_list.set_defaults(func=do_list)
 
     parser_log = subparsers.add_parser('log', help='log service')
