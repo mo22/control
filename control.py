@@ -121,7 +121,8 @@ def systemd_install(config, service):
 
 
 def do_dump(args):
-    pprint(config)
+    config = config_load(args.config)
+    print(yaml.dumps(config))
 
 
 def do_run(args):
