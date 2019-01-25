@@ -81,13 +81,18 @@ def systemd_template(config, service):
     tpl += 'User=root\n'
     tpl += 'SyslogIdentifier=%s\n' % (name, )
     tpl += 'LimitNOFILE=32768\n'
-    tmp = [ os.path.realpath(os.path.join(service.get('cwd', '.'), service['cmd'])) ] + service['args']
+    cwd = os.path.realpath(service.get('cwd', '.'))
+    tmp = [ service['cmd'] ] + service['args']
     execStart = ' '.join([ pipes.quote(i) for i in tmp ])
     tpl += 'ExecStart=%s\n' % (execStart, )
+    tpl += 'WorkingDirectory=%s\n' % (cwd, )
+    #WorkingDirectory=/server/golfapp.mxs.de
+    #Environment=HOME=/tmp/
     # # Environment="ONE=one" 'TWO=two two'
     tpl += '[Install]\n'
     tpl += 'WantedBy=multi-user.target\n'
     return tpl
+
 
 def systemd_install(config, service):
     name = config['name'] + '-' + service['name']
