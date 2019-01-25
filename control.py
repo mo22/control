@@ -77,6 +77,11 @@ def config_load(path):
     return config
 
 def config_get_services(config, filter):
+    if isinstance(filter, list):
+        res = []
+        for i in filter:
+            res += config_get_services(config, i)
+        return res
     if filter in config['services']:
         return [ config['services'][filter] ]
     if filter == 'all':
@@ -210,7 +215,7 @@ def do_restart(args):
 
 def do_status(args):
     config = config_load(args.config)
-    services = config_get_services(config, args.name)
+    services = config_get_services(config, args.name or 'all')
     for service in services:
         status = systemd_status(config, service)
         print(service['name'], status)
@@ -236,6 +241,7 @@ def do_list(args):
 
 
 def do_log(args):
+    # @TODO: sequencial if no --follow?
     config = config_load(args.config)
     procs = []
     services = config_get_services(config, args.name)
@@ -247,17 +253,16 @@ def do_log(args):
         procs.append(proc)
     for proc in procs:
         proc.wait()
-    # (config, service) = config_service(args)
-    # name = config['name'] + '-' + service['name']
-    # if args.follow:
-    #     subprocess.check_call(['journalctl', '-f', '-u', name])
-    # else:
-    #     subprocess.check_call(['journalctl', '-u', name])
 
 
 
 def main():
     import argparse
+
+    # type=int
+    # choices=[0, 1, 2]
+    # default=
+    # nargs='?',
 
     parser = argparse.ArgumentParser(description='control')
     parser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
@@ -266,7 +271,6 @@ def main():
 
     parser_dump = subparsers.add_parser('dump')
     parser_dump.set_defaults(func=do_dump)
-
 
     parser_run = subparsers.add_parser('run', help='run service')
     parser_run.add_argument('name', help='name of service')
@@ -285,7 +289,7 @@ def main():
     parser_restart.set_defaults(func=do_restart)
 
     parser_status = subparsers.add_parser('status', help='status service')
-    parser_status.add_argument('name', help='name of service')
+    parser_status.add_argument('name', nargs='*', help='name of service')
     parser_status.add_argument('--full', action='store_true')
     parser_status.set_defaults(func=do_status)
 
