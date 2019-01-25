@@ -177,8 +177,14 @@ def do_run(args):
         stderr=sys.stderr,
         stdin=sys.stdin,
     )
-    exitcode = proc.wait()
-    sys.exit(exitcode)
+    while True:
+        try:
+            exitcode = proc.wait()
+            sys.exit(exitcode)
+        except KeyboardInterrupt:
+            print('terminate')
+            proc.terminate()
+            # proc.send_signal(subprocess.CTRL_C_EVENT)
 
 
 
