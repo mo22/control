@@ -44,6 +44,8 @@ def config_load(path):
     with open(path, 'r') as fp:
         config = yaml.load(fp)
     jsonschema.validate(config, config_schema)
+    if not 'root' in config:
+        config['root'] = os.path.realpath(os.path.dirname(path))
     if not 'services' in config:
         config['services'] = {}
     for name, service in config['services'].items():
@@ -57,6 +59,13 @@ def config_load(path):
             service['cmd'] = '/bin/sh'
             service['args'] = [ '-c', service['shell'] ]
             del service['shell']
+        if not 'cwd' in service:
+            service['cwd'] = config['root']
+        if service['cmd'].endswith('.js'):
+            print('prefix node.js?')
+        if not service['cmd'].startswith('/'):
+            print('relative path in cmd')
+            service['cmd'] = os.path.join(config['root'], service['cmd'])
     return config
 
 def config_service(args):
@@ -86,9 +95,8 @@ def systemd_template(config, service):
     execStart = ' '.join([ pipes.quote(i) for i in tmp ])
     tpl += 'ExecStart=%s\n' % (execStart, )
     tpl += 'WorkingDirectory=%s\n' % (cwd, )
-    #WorkingDirectory=/server/golfapp.mxs.de
-    #Environment=HOME=/tmp/
-    # # Environment="ONE=one" 'TWO=two two'
+    for (k, v) in service.get('env', {}).items():
+        tpl += 'Environment=%s=%s\n' % (k, v)
     tpl += '[Install]\n'
     tpl += 'WantedBy=multi-user.target\n'
     return tpl
@@ -108,6 +116,9 @@ def systemd_install(config, service):
         fp.write(tpl)
     subprocess.check_call(['systemctl', 'enable', name])
 
+
+def do_dump(args):
+    pprint(config)
 
 
 def do_run(args):
@@ -182,11 +193,15 @@ def do_log(args):
 
 def main():
     import argparse
-    
+
     parser = argparse.ArgumentParser(description='control')
     parser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
     parser.add_argument('--config', default='control.yaml', help='path to config file')
     subparsers = parser.add_subparsers(help='sub-command help')
+
+    parser_dump = subparsers.add_parser('dump')
+    parser_dump.set_defaults(func=do_dump)
+
 
     parser_run = subparsers.add_parser('run', help='run service')
     parser_run.add_argument('name', help='name of service')
@@ -199,15 +214,15 @@ def main():
     parser_stop = subparsers.add_parser('stop', help='stop service')
     parser_stop.add_argument('name', help='name of service')
     parser_stop.set_defaults(func=do_stop)
-    
+
     parser_restart = subparsers.add_parser('restart', help='restart service')
     parser_restart.add_argument('name', help='name of service')
     parser_restart.set_defaults(func=do_restart)
-    
+
     parser_status = subparsers.add_parser('status', help='status service')
     parser_status.add_argument('name', help='name of service')
     parser_status.set_defaults(func=do_status)
-    
+
     parser_list = subparsers.add_parser('list', help='list service')
     parser_list.set_defaults(func=do_list)
 
@@ -215,7 +230,7 @@ def main():
     parser_log.add_argument('name', help='name of service')
     parser_log.add_argument('--follow', '-f', action='store_true', help='follow')
     parser_log.set_defaults(func=do_log)
-    
+
     # [ ] start all / stop all ?
     # [ ] start prefix* ?
     # [ ] status
@@ -225,7 +240,7 @@ def main():
     # [ ] trigger? manual / system-start / cron?
     # [ ] update to update systemd stuff?
     # [ ] restart
-    
+
     args = parser.parse_args()
 
     if args.verbose:
