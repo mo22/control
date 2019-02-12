@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 
+# [ ] exec wrapper. need to be able to ignore output if result code is certain value
+# [ ] reload?
+# [ ] configuration: cron? service?
+# [ ] trigger cron? use start?
+# [ ] make systemd a module?
+# [ ] configure which services run on which machine... based on ENV and regexp? srvdb?
+
 from __future__ import print_function
 
 import os
@@ -11,6 +18,15 @@ import yaml
 import jsonschema
 import shlex
 import pipes
+
+
+
+DEVNULL = open(os.devnull, 'w')
+
+
+
+if os.geteuid() != 0:
+    os.execvp('sudo', ['sudo', '-E', '-n'] + sys.argv)
 
 
 
@@ -76,6 +92,9 @@ def config_load(path):
                 service['cmd'] = tmp
     return config
 
+def config_get_service(config, name):
+    return config['services'].get(name, None)
+
 def config_get_services(config, filter):
     if isinstance(filter, list):
         res = []
@@ -118,7 +137,6 @@ def systemd_template(config, service):
     tpl += 'WantedBy=multi-user.target\n'
     return tpl
 
-
 def systemd_install(config, service):
     name = config['name'] + '-' + service['name']
     target = '/etc/systemd/system/' + name + '.service'
@@ -129,33 +147,43 @@ def systemd_install(config, service):
                 return
     except:
         pass
-    if True:
-        proc = subprocess.Popen(['sudo', 'tee', target], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        (output, output_err) = proc.communicate(tpl)
-    else:
-        with open(target, 'w') as fp:
-            fp.write(tpl)
-    subprocess.check_call(['sudo', 'systemctl', 'enable', name])
+    with open(target, 'w') as fp:
+        fp.write(tpl)
+    # subprocess.check_call(['systemctl', 'enable', name])
 
 def systemd_uninstall(config, service):
-    pass
-
-def systemd_status(config, service):
     name = config['name'] + '-' + service['name']
-    try:
-        subprocess.check_output(['systemctl', 'is-active', name])
+    subprocess.check_call(['systemctl', 'disable', name], stdout=DEVNULL)
+    target = '/etc/systemd/system/' + name + '.service'
+    if os.isfile(target):
+        os.unlink(target)
+
+def systemd_enable(config, service, enable):
+    name = config['name'] + '-' + service['name']
+    if enable:
+        res = subprocess.call(['systemctl', 'enable', name], stdout=DEVNULL, stderr=DEVNULL)
+        if res != 0 and res != 1: raise subprocess.CalledProcessError(res)
+    else:
+        res = subprocess.call(['systemctl', 'disable', name], stdout=DEVNULL, stderr=DEVNULL)
+        if res != 0 and res != 1: raise subprocess.CalledProcessError(res)
+
+def systemd_get_enabled(config, service):
+    name = config['name'] + '-' + service['name']
+    res = subprocess.call(['systemctl', 'is-enabled', name], stdout=DEVNULL, stderr=DEVNULL)
+    return res == 0
+
+def systemd_get_status(config, service):
+    name = config['name'] + '-' + service['name']
+    res = subprocess.call(['systemctl', 'is-active', name], stdout=DEVNULL)
+    if res == 0:
         return 'running'
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 3:
-            return 'stopped'
-        print('error code', e.returncode)
-        return 'unknown'
+    elif res == 3:
+        return 'stopped'
+    else:
+        return 'unknown ' + res
 
 
 
-def do_dump(args):
-    config = config_load(args.config)
-    print(yaml.dump(config))
 
 
 
@@ -188,78 +216,6 @@ def do_run(args):
 
 
 
-def do_start(args):
-    config = config_load(args.config)
-    services = config_get_services(config, args.name)
-    for service in services:
-        name = config['name'] + '-' + service['name']
-        systemd_install(config, service)
-        subprocess.check_call(['sudo', 'systemctl', 'start', name])
-
-
-
-def do_stop(args):
-    config = config_load(args.config)
-    services = config_get_services(config, args.name)
-    for service in services:
-        name = config['name'] + '-' + service['name']
-        systemd_install(config, service)
-        subprocess.check_call(['sudo', 'systemctl', 'stop', name])
-
-
-
-def do_restart(args):
-    config = config_load(args.config)
-    services = config_get_services(config, args.name)
-    for service in services:
-        name = config['name'] + '-' + service['name']
-        systemd_install(config, service)
-        # also start if not running?
-        subprocess.check_call(['sudo', 'systemctl', 'restart', name])
-
-
-
-def do_status(args):
-    config = config_load(args.config)
-    services = config_get_services(config, args.name or 'all')
-    for service in services:
-        status = systemd_status(config, service)
-        print(service['name'], status)
-        if args.full:
-            try:
-                subprocess.check_call(['systemctl', 'status', '--no-pager', name])
-            except subprocess.CalledProcessError as e:
-                pass
-
-
-
-def do_list(args):
-    config = config_load(args.config)
-    for service in config['services'].values():
-        status = systemd_status(config, service)
-        print(service['name'], status)
-        if args.full:
-            try:
-                subprocess.check_call(['systemctl', 'status', '--no-pager', name])
-            except subprocess.CalledProcessError as e:
-                pass
-
-
-
-def do_log(args):
-    # @TODO: sequencial if no --follow?
-    config = config_load(args.config)
-    procs = []
-    services = config_get_services(config, args.name)
-    for service in services:
-        name = config['name'] + '-' + service['name']
-        cmd = ['sudo', 'journalctl', '-u', name]
-        if args.follow: cmd += ['-f']
-        proc = subprocess.Popen(cmd) # really?
-        procs.append(proc)
-    for proc in procs:
-        proc.wait()
-
 
 
 def main():
@@ -270,55 +226,215 @@ def main():
     # default=
     # nargs='?',
 
-    parser = argparse.ArgumentParser(description='control')
-    parser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
-    parser.add_argument('--config', default='control.yaml', help='path to config file')
-    subparsers = parser.add_subparsers(help='sub-command help')
+    mainparser = argparse.ArgumentParser(description='control')
+    mainparser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
+    mainparser.add_argument('--config', default='control.yaml', help='path to config file')
+    subparsers = mainparser.add_subparsers(help='sub-command help')
 
-    parser_dump = subparsers.add_parser('dump')
-    parser_dump.set_defaults(func=do_dump)
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            print(yaml.dump(config))
+        parser = subparsers.add_parser('dump')
+        parser.set_defaults(func=handle)
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            print(config['name'])
+        parser = subparsers.add_parser('prefix')
+        parser.set_defaults(func=handle)
+
+
 
     parser_run = subparsers.add_parser('run', help='run service')
     parser_run.add_argument('name', help='name of service')
     parser_run.set_defaults(func=do_run)
 
-    parser_start = subparsers.add_parser('start', help='start service')
-    parser_start.add_argument('name', nargs='+', help='name of service')
-    parser_start.set_defaults(func=do_start)
 
-    parser_stop = subparsers.add_parser('stop', help='stop service')
-    parser_stop.add_argument('name', nargs='+', help='name of service')
-    parser_stop.set_defaults(func=do_stop)
 
-    parser_restart = subparsers.add_parser('restart', help='restart service')
-    parser_restart.add_argument('name', nargs='+', help='name of service')
-    parser_restart.set_defaults(func=do_restart)
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                systemd_install(config, service)
+        parser = subparsers.add_parser('install', help='install service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
 
-    parser_status = subparsers.add_parser('status', help='status service')
-    parser_status.add_argument('name', nargs='*', help='name of service')
-    parser_status.add_argument('--full', action='store_true')
-    parser_status.set_defaults(func=do_status)
 
-    parser_list = subparsers.add_parser('list', help='list service')
-    parser_list.add_argument('--full', action='store_true')
-    parser_list.set_defaults(func=do_list)
 
-    parser_log = subparsers.add_parser('log', help='log service')
-    parser_log.add_argument('name', nargs='+', help='name of service')
-    parser_log.add_argument('--follow', '-f', action='store_true', help='follow')
-    parser_log.set_defaults(func=do_log)
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                systemd_uninstall(config, service)
+        parser = subparsers.add_parser('uninstall', help='uninstall service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
 
-    # [ ] start all / stop all ?
-    # [ ] start prefix* ?
-    # [ ] status
-    # [ ] log / logtail
-    # [ ] list
-    # [ ] crons?
-    # [ ] trigger? manual / system-start / cron?
-    # [ ] update to update systemd stuff?
-    # [ ] restart
 
-    args = parser.parse_args()
+
+    if True:
+        def handle(args):
+            # @TODO: wait for result
+            # @TODO: do not enable yet.
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                name = config['name'] + '-' + service['name']
+                # systemd_install(config, service)
+                subprocess.check_call(['systemctl', 'start', name])
+        parser = subparsers.add_parser('start', help='start service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            # @TODO: wait for result
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                name = config['name'] + '-' + service['name']
+                subprocess.check_call(['systemctl', 'stop', name])
+        parser = subparsers.add_parser('stop', help='stop service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                name = config['name'] + '-' + service['name']
+                # also start if not running?
+                subprocess.check_call(['systemctl', 'restart', name])
+        parser = subparsers.add_parser('restart', help='restart service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            service = config_get_service(config, args.name)
+            status = systemd_get_status(config, service)
+            if status == 'running':
+                sys.exit(0)
+            else:
+                sys.exit(1)
+        parser = subparsers.add_parser('is-running', help='check if service is running')
+        parser.add_argument('name', help='name of service')
+        parser.set_defaults(func=handle)
+        # @TODO: additional help?
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            service = config_get_service(config, args.name)
+            status = systemd_get_enabled(config, service)
+            if status:
+                sys.exit(0)
+            else:
+                sys.exit(1)
+        parser = subparsers.add_parser('is-enabled', help='check if service is enabled')
+        parser.add_argument('name', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                systemd_enable(config, service, True)
+        parser = subparsers.add_parser('enable', help='enable service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name)
+            for service in services:
+                systemd_enable(config, service, False)
+        parser = subparsers.add_parser('disable', help='disable service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            services = config_get_services(config, args.name or 'all')
+            for service in services:
+                status = systemd_get_status(config, service)
+                print(service['name'], status)
+                if args.full:
+                    name = config['name'] + '-' + service['name']
+                    subprocess.call(['systemctl', 'status', '--no-pager', name])
+        parser = subparsers.add_parser('status', help='status service')
+        parser.add_argument('name', nargs='*', help='name of service')
+        parser.add_argument('--full', '-f', action='store_true')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            for service in config['services'].values():
+                status = systemd_get_status(config, service)
+                enabled = systemd_get_enabled(config, service)
+                print(service['name'], 'enabled' if enabled else 'disabled', status)
+                if args.full:
+                    try:
+                        name = config['name'] + '-' + service['name']
+                        subprocess.check_call(['systemctl', 'status', '--no-pager', name])
+                    except subprocess.CalledProcessError as e:
+                        pass
+        parser = subparsers.add_parser('list', help='list service')
+        parser.add_argument('--full', '-f', action='store_true')
+        parser.set_defaults(func=handle)
+
+
+
+    if True:
+        def handle(args):
+            config = config_load(args.config)
+            procs = []
+            services = config_get_services(config, args.name)
+            for service in services:
+                name = config['name'] + '-' + service['name']
+                cmd = ['journalctl', '-u', name]
+                if args.follow: cmd += ['-f']
+                proc = subprocess.Popen(cmd) # really?
+                procs.append(proc)
+            for proc in procs:
+                proc.wait()
+        parser = subparsers.add_parser('log', help='log service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        parser.add_argument('--follow', '-f', action='store_true', help='follow')
+        parser.set_defaults(func=handle)
+
+
+
+    args = mainparser.parse_args()
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
