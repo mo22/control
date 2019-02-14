@@ -13,6 +13,16 @@
 
 from __future__ import print_function
 
+
+
+if False:
+    import os
+    import sys
+    if os.geteuid() != 0:
+        os.execvp('sudo', ['sudo', '-E', '-n'] + sys.argv)
+
+
+
 import os
 import sys
 import subprocess
@@ -29,8 +39,30 @@ DEVNULL = open(os.devnull, 'w')
 
 
 
-if os.geteuid() != 0:
-    os.execvp('sudo', ['sudo', '-E', '-n'] + sys.argv)
+def execute(
+    args,
+    stdin=None,
+    stdout=None,
+    stderr=None,
+    cwd=None,
+    env=None
+):
+    # @TODO: return status?
+    # @TODO: devnull stdout, stderr etc.?
+    # @TODO: sudo?
+    # @TODO: pass string as stdin? get string from stdout?
+    proc = subprocess.Popen(
+        args,
+        stdin=stdin, stdout=stdout, stderr=stderr,
+        cwd=cwd,
+        env=env,
+    )
+    proc.wait()
+    # if retcode:
+    #     cmd = kwargs.get("args")
+    #     if cmd is None:
+    #         cmd = popenargs[0]
+    #     raise CalledProcessError(retcode, cmd)
 
 
 
@@ -64,6 +96,7 @@ def config_load(path):
     with open(path, 'r') as fp:
         config = yaml.load(fp)
     jsonschema.validate(config, config_schema)
+    config['path'] = path
     if not 'root' in config:
         config['root'] = os.path.realpath(os.path.dirname(path))
     if not 'services' in config:
@@ -115,21 +148,26 @@ def config_get_services(config, filter):
 
 
 def systemd_template(config, service):
+    # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
+    # https://www.freedesktop.org/software/systemd/man/systemd.timer.html
+    # https://www.freedesktop.org/software/systemd/man/systemd.service.html
     name = config['name'] + '-' + service['name']
     tpl = '# created by control.py\n'
+    tpl += '# control.yaml=%s\n' % (config['path'], )
+    tpl += '\n'
     tpl += '[Unit]\n'
     tpl += 'Description=%s\n' % (name, )
     tpl += 'After=syslog.target network.target\n'
+    tpl += '\n'
     tpl += '[Service]\n'
     tpl += 'Type=simple\n'
-    tpl += 'KillMode=process\n'
+    # tpl += 'KillMode=process\n'
+    # @TODO: config
     tpl += 'Restart=on-failure\n'
-    tpl += 'User=root\n'
     tpl += 'SyslogIdentifier=%s\n' % (name, )
     if 'nofile' in service:
         tpl += 'LimitNOFILE=%d\n' % (service['nofile'], )
-    if 'user' in service:
-        tpl += 'User=%s\n' % (service['user'], )
+    tpl += 'User=%s\n' % (service.get('user', 'root'), )
     cwd = os.path.realpath(service.get('cwd', '.'))
     tmp = [ service['cmd'] ] + service['args']
     execStart = ' '.join([ pipes.quote(i) for i in tmp ])
@@ -137,6 +175,8 @@ def systemd_template(config, service):
     tpl += 'WorkingDirectory=%s\n' % (cwd, )
     for (k, v) in service.get('env', {}).items():
         tpl += 'Environment=%s=%s\n' % (k, v)
+    # @TODO: only if auto-start
+    tpl += '\n'
     tpl += '[Install]\n'
     tpl += 'WantedBy=multi-user.target\n'
     return tpl
@@ -151,9 +191,9 @@ def systemd_install(config, service):
                 return
     except:
         pass
+    # sudo?
     with open(target, 'w') as fp:
         fp.write(tpl)
-    # subprocess.check_call(['systemctl', 'enable', name])
 
 def systemd_uninstall(config, service):
     name = config['name'] + '-' + service['name']
@@ -230,10 +270,11 @@ def main():
     # default=
     # nargs='?',
 
-    mainparser = argparse.ArgumentParser(description='control')
+    mainparser = argparse.ArgumentParser()
     mainparser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
     mainparser.add_argument('--config', default='control.yaml', help='path to config file')
-    subparsers = mainparser.add_subparsers(help='sub-command help')
+    # subparsers = mainparser.add_subparsers(required=True) # @TODO python3 only
+    subparsers = mainparser.add_subparsers()
 
 
     if True:
@@ -253,9 +294,10 @@ def main():
 
 
 
-    parser_run = subparsers.add_parser('run', help='run service')
-    parser_run.add_argument('name', help='name of service')
-    parser_run.set_defaults(func=do_run)
+    if True:
+        parser = subparsers.add_parser('run', help='run service')
+        parser.add_argument('name', help='name of service')
+        parser.set_defaults(func=do_run)
 
 
 
@@ -439,6 +481,9 @@ def main():
 
 
     args = mainparser.parse_args()
+    if not 'func' in args:
+        mainparser.print_usage()
+        sys.exit(1)
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
