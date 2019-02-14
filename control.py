@@ -64,6 +64,7 @@ class Executable(object):
             'args': { 'type': 'array' },
             'run': { 'type': 'string' },
             'shell': { 'type': 'string' },
+            'cwd': { 'type': 'string' },
         },
         'oneOf': [
             { 'required': ['run'] },
@@ -100,7 +101,7 @@ class Executable(object):
             args = [ data.pop('cmd') ] + data.pop('args', [])
 
         if 'cwd' in data:
-            cwd = data.pop('cwd')
+            cwd = os.path.realpath(data.pop('cwd'))
             assert isinstance(cwd, str)
 
         if 'env' in data:
