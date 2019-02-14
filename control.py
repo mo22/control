@@ -78,8 +78,15 @@ class Executable(object):
         self.env = None
         self.cwd = None
 
+    def to_dict(self):
+        res = {}
+        res['args'] = self.args
+        if self.env: res['env'] = self.env
+        if self.cwd: res['cwd'] = self.cwd
+        return res
+
     def __repr__(self):
-        return repr(self.__dict__)
+        return repr(self.to_dict())
 
     def parse_dict(self, data):
         jsonschema.validate(data, self.schema)
@@ -136,8 +143,16 @@ class Service(Executable):
         ],
     }
 
+    def __init__(self):
+        super().__init__()
+
+    def to_dict(self):
+        res = super().to_dict()
+        return res
+
     def __repr__(self):
-        return repr(self.__dict__)
+        return repr(self.to_dict())
+        # return repr(self.__dict__)
 
     def parse_dict(self, data):
         jsonschema.validate(data, self.schema)
@@ -166,8 +181,19 @@ class Config(object):
         self.path = None
         self.services = {}
 
+    def to_dict(self):
+        res = {}
+        res['version'] = self.version
+        res['name'] = self.name
+        res['path'] = self.path # ?
+        res['services'] = {}
+        for k, v in self.services.items():
+            res['services'][k] = v.to_dict()
+        return res
+
     def __repr__(self):
-        return repr(self.__dict__)
+        return repr(self.to_dict())
+        # return repr(self.__dict__)
 
     def parse_dict(self, data):
         jsonschema.validate(data, self.schema)
@@ -215,7 +241,7 @@ def config_load(path):
     tmp = Config()
     tmp.parse_dict(config.copy())
     tmp.path = path
-    print(repr(tmp))
+    print(yaml.safe_dump(tmp.to_dict()))
 
     jsonschema.validate(config, config_schema)
     config['path'] = path
