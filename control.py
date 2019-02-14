@@ -7,6 +7,10 @@
 # [ ] make systemd a module?
 # [ ] configure which services run on which machine... based on ENV and regexp? srvdb?
 
+# sudo systemctl is-active eventstream-storage-clean; echo $?
+# inactive
+# 3
+
 from __future__ import print_function
 
 import os
