@@ -79,7 +79,8 @@ class Executable(object):
         self.cwd = cwd
 
     def __repr__(self):
-        return 'Executable<args=%r,env=%r,cwd=%r>' % (self.args, self.env, self.cwd)
+        return repr(self.__dict__)
+        # return 'Executable<args=%r,env=%r,cwd=%r>' % (self.args, self.env, self.cwd)
 
     @classmethod
     def from_dict(cls, data):
@@ -134,12 +135,47 @@ class Executable(object):
 
 
 class Service(object):
+    schema = {
+
+    }
     pass
 
 
 
 class Config(object):
-    pass
+    schema = {
+        'type': 'object',
+        'required': ['name', 'version'],
+        'properties': {
+            'name': { 'type': 'string' },
+            'version': { 'type': 'string', 'enum': [ 'https://github.com/mo22/control' ] },
+            'services': {
+                'type': 'object',
+                'additionalProperties': Service.schema,
+            },
+        },
+    }
+
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    @classmethod
+    def from_dict(cls, data, path=None):
+        jsonschema.validate(data, cls.schema)
+        version = data.pop('version')
+        name = data.pop('name')
+        res = Config()
+        res.version = version
+        res.name = name
+        res.path = path
+        res.services = {}
+        for (key, value) in data.pop('services', {}).items():
+            res.services[key] = Executable.from_dict(value.copy())
+        return res
+
 
 
 config_schema = {
@@ -172,6 +208,10 @@ config_schema = {
 def config_load(path):
     with open(path, 'r') as fp:
         config = yaml.load(fp)
+
+    tmp = Config.from_dict(config.copy(), path=path)
+    print(repr(tmp))
+
     jsonschema.validate(config, config_schema)
     config['path'] = path
     if not 'root' in config:
