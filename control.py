@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-
-# [ ] exec wrapper. need to be able to ignore output if result code is certain value
-# [ ] reload?
-# [ ] configuration: cron? service?
-# [ ] trigger cron? use start?
-# [ ] make systemd a module?
-# [ ] configure which services run on which machine... based on ENV and regexp? srvdb?
-
-# sudo systemctl is-active eventstream-storage-clean; echo $?
-# inactive
-# 3
-
 from __future__ import print_function
 
 
