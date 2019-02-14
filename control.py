@@ -73,72 +73,76 @@ class Executable(object):
         ],
     }
 
-    def __init__(self, args, env=None, cwd=None):
-        self.args = args
-        self.env = env
-        self.cwd = cwd
+    def __init__(self):
+        self.args = None
+        self.env = None
+        self.cwd = None
 
     def __repr__(self):
         return repr(self.__dict__)
-        # return 'Executable<args=%r,env=%r,cwd=%r>' % (self.args, self.env, self.cwd)
 
-    @classmethod
-    def from_dict(cls, data):
-        jsonschema.validate(data, cls.schema)
-
-        args = None
-        cwd = None
-        env = None
+    def parse_dict(self, data):
+        jsonschema.validate(data, self.schema)
 
         if 'run' in data:
-            args = shlex.split(data.pop('run'))
+            self.args = shlex.split(data.pop('run'))
 
         if 'shell' in data:
-            assert args is None
-            args = [ '/bin/sh', '-c', data.pop('shell') ]
+            assert self.args is None
+            self.args = [ '/bin/sh', '-c', data.pop('shell') ]
 
         if 'cmd' in data:
-            assert args is None
-            args = [ data.pop('cmd') ] + data.pop('args', [])
+            assert self.args is None
+            self.args = [ data.pop('cmd') ] + data.pop('args', [])
 
         if 'cwd' in data:
-            cwd = os.path.realpath(data.pop('cwd'))
-            assert isinstance(cwd, str)
+            self.cwd = os.path.realpath(data.pop('cwd'))
+            assert isinstance(self.cwd, str)
 
         if 'env' in data:
-            env = data.pop('env')
-            assert isinstance(env, dict)
+            self.env = data.pop('env')
+            assert isinstance(self.env, dict)
 
-        assert args and len(args) >= 1
+        assert self.args and len(self.args) >= 1
 
         def resolve(path):
-            return os.path.realpath(os.path.join(cwd if cwd else '.', path))
+            return os.path.realpath(os.path.join(self.cwd if self.cwd else '.', path))
 
-        if not os.access(resolve(args[0]), os.X_OK) and args[0].endswith('.js'):
-            args = ['node'] + args
-        if not os.access(resolve(args[0]), os.X_OK) and args[0].endswith('.py'):
-            args = ['python'] + args
+        if not os.access(resolve(self.args[0]), os.X_OK) and self.args[0].endswith('.js'):
+            self.args = ['node'] + self.args
+        if not os.access(resolve(self.args[0]), os.X_OK) and self.args[0].endswith('.py'):
+            self.args = ['python'] + self.args
 
-        if not os.path.isfile(resolve(args[0])) and not '/' in args[0]:
+        if not os.path.isfile(resolve(self.args[0])) and not '/' in self.args[0]:
             try:
-                tmp = subprocess.check_output(['which', args[0]]).strip()
-                args[0] = tmp.decode('utf-8')
+                tmp = subprocess.check_output(['which', self.args[0]]).strip()
+                self.args[0] = tmp.decode('utf-8')
             except:
                 pass
 
         # @TODO: really?
-        assert os.path.isfile(resolve(args[0])), 'does not exist: {}'.format(resolve(args[0]))
-        assert os.access(resolve(args[0]), os.X_OK), 'not executable: {}'.format(resolve(args[0]))
-
-        return Executable(args, env, cwd)
+        assert os.path.isfile(resolve(self.args[0])), 'does not exist: {}'.format(resolve(self.args[0]))
+        assert os.access(resolve(self.args[0]), os.X_OK), 'not executable: {}'.format(resolve(self.args[0]))
 
 
 
-class Service(object):
+class Service(Executable):
     schema = {
-
+        'allOf': [
+            Executable.schema,
+            {
+                'type': 'object',
+            },
+        ],
     }
-    pass
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    def parse_dict(self, data):
+        jsonschema.validate(data, self.schema)
+        super().parse_dict(data)
+        # super parse_dict
 
 
 
@@ -157,24 +161,23 @@ class Config(object):
     }
 
     def __init__(self):
-        pass
+        self.version = None
+        self.name = None
+        self.path = None
+        self.services = {}
 
     def __repr__(self):
         return repr(self.__dict__)
 
-    @classmethod
-    def from_dict(cls, data, path=None):
-        jsonschema.validate(data, cls.schema)
-        version = data.pop('version')
-        name = data.pop('name')
-        res = Config()
-        res.version = version
-        res.name = name
-        res.path = path
-        res.services = {}
+    def parse_dict(self, data):
+        jsonschema.validate(data, self.schema)
+        self.version = data.pop('version')
+        self.name = data.pop('name')
+        # res.path = os.path.realpath(path) if path else None
         for (key, value) in data.pop('services', {}).items():
-            res.services[key] = Executable.from_dict(value.copy())
-        return res
+            service = Service()
+            service.parse_dict(value.copy())
+            self.services[key] = service
 
 
 
@@ -209,7 +212,9 @@ def config_load(path):
     with open(path, 'r') as fp:
         config = yaml.load(fp)
 
-    tmp = Config.from_dict(config.copy(), path=path)
+    tmp = Config()
+    tmp.parse_dict(config.copy())
+    tmp.path = path
     print(repr(tmp))
 
     jsonschema.validate(config, config_schema)
@@ -219,9 +224,6 @@ def config_load(path):
     if not 'services' in config:
         config['services'] = {}
     for name, service in config['services'].items():
-        tmp = Executable.from_dict(service.copy())
-        print(tmp)
-
         service['name'] = name
         if 'run' in service:
             tmp = shlex.split(service['run'])
