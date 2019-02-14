@@ -203,7 +203,7 @@ def config_load(path):
                 # print('relative path in cmd', service['cmd'], tmp)
                 service['cmd'] = tmp
         if not service['cmd'].startswith('/'):
-            tmp = subprocess.check_output(['which', service['cmd']]).strip()
+            tmp = subprocess.check_output(['which', service['cmd']]).strip().decode('utf-8')
             if os.path.exists(tmp):
                 # print('resolve path', service['cmd'], tmp)
                 service['cmd'] = tmp
