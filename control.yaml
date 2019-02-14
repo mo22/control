@@ -11,12 +11,19 @@ services:
                 ps waux
                 sleep 10
             done
+        type: daemon
 
     test-path:
         run: date
+        type: daemon
 
     test-js:
         cmd: test.js
+        type: daemon
 
     test-py:
         cmd: test.py
+        type: daemon
+        user: root
+        # cpu quota
+        # mem quota

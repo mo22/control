@@ -1,5 +1,16 @@
 TODO
 
+[ ] Config.get_service()
+[ ] Config.get_services()
+
+[ ] Config.groups  + Group
+
+[ ] Service. [ restart | user | autostart | calendar | interval ]
+
+
+
+
+
 [ ] execute method with sudo wrapper
 
 [ ] command: reload
