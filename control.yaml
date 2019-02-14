@@ -11,3 +11,12 @@ services:
                 ps waux
                 sleep 10
             done
+
+    test-path:
+        run: date
+
+    test-js:
+        cmd: test.js
+
+    test-py:
+        cmd: test.py

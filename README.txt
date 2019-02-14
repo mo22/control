@@ -11,6 +11,9 @@ TODO
 
 [ ] config: triggers. cron? calendar-cron? onboot?
 
+[ ] config: env: to define environment variables?
+[ ] config: string interpolation? no standard.
+
 [ ] method to resolve { run, shell, cmd, args } to command list?
 
 [ ] pre-start script to verify dependencies or something?

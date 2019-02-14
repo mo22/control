@@ -54,6 +54,93 @@ def execute(
 
 
 
+
+class Executable(object):
+    schema = {
+        'type': 'object',
+        'properties': {
+            'cmd': { 'type': 'string' },
+            'env': { 'type': 'object' },
+            'args': { 'type': 'array' },
+            'run': { 'type': 'string' },
+            'shell': { 'type': 'string' },
+        },
+        'oneOf': [
+            { 'required': ['run'] },
+            { 'required': ['cmd'] },
+            { 'required': ['shell'] },
+        ],
+    }
+
+    def __init__(self, args, env=None, cwd=None):
+        self.args = args
+        self.env = env
+        self.cwd = cwd
+
+    def __repr__(self):
+        return 'Executable<args=%r,env=%r,cwd=%r>' % (self.args, self.env, self.cwd)
+
+    @classmethod
+    def from_dict(cls, data):
+        jsonschema.validate(data, cls.schema)
+
+        args = None
+        cwd = None
+        env = None
+
+        if 'run' in data:
+            args = shlex.split(data.pop('run'))
+
+        if 'shell' in data:
+            assert args is None
+            args = [ '/bin/sh', '-c', data.pop('shell') ]
+
+        if 'cmd' in data:
+            assert args is None
+            args = [ data.pop('cmd') ] + data.pop('args', [])
+
+        if 'cwd' in data:
+            cwd = data.pop('cwd')
+            assert isinstance(cwd, str)
+
+        if 'env' in data:
+            env = data.pop('env')
+            assert isinstance(env, dict)
+
+        assert args and len(args) >= 1
+
+        def resolve(path):
+            return os.path.realpath(os.path.join(cwd if cwd else '.', path))
+
+        if not os.access(resolve(args[0]), os.X_OK) and args[0].endswith('.js'):
+            args = ['node'] + args
+        if not os.access(resolve(args[0]), os.X_OK) and args[0].endswith('.py'):
+            args = ['python'] + args
+
+        if not os.path.isfile(resolve(args[0])) and not '/' in args[0]:
+            try:
+                tmp = subprocess.check_output(['which', args[0]]).strip()
+                args[0] = tmp.decode('utf-8')
+            except:
+                pass
+
+        # @TODO: really?
+        assert os.path.isfile(resolve(args[0])), 'does not exist: {}'.format(resolve(args[0]))
+        assert os.access(resolve(args[0]), os.X_OK), 'not executable: {}'.format(resolve(args[0]))
+
+        return Executable(args, env, cwd)
+
+
+
+class Service(object):
+    pass
+
+
+
+class Config(object):
+    pass
+
+
 config_schema = {
     'type': 'object',
     'required': ['name'],
@@ -91,6 +178,9 @@ def config_load(path):
     if not 'services' in config:
         config['services'] = {}
     for name, service in config['services'].items():
+        tmp = Executable.from_dict(service.copy())
+        print(tmp)
+
         service['name'] = name
         if 'run' in service:
             tmp = shlex.split(service['run'])
@@ -104,7 +194,7 @@ def config_load(path):
         if not 'cwd' in service:
             service['cwd'] = config['root']
         if service['cmd'].endswith('.js'):
-            service['args'] = [service['cmd']] + service['args']
+            service['args'] = [service['cmd']] + service.get('args', [])
             service['cmd'] = 'node'
         if not service['cmd'].startswith('/'):
             tmp = os.path.join(config['root'], service['cmd'])
