@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 # [ ] exec wrapper. need to be able to ignore output if result code is certain value
 # [ ] reload?
@@ -71,6 +71,7 @@ config_schema = {
     'required': ['name'],
     'properties': {
         'name': { 'type': 'string' },
+        'version': { 'type': 'string', 'enum': [ 'https://github.com/mo22/control' ] },
         'services': {
             'type': 'object',
             'additionalProperties': {
@@ -254,7 +255,6 @@ def do_run(args):
             exitcode = proc.wait()
             sys.exit(exitcode)
         except KeyboardInterrupt:
-            print('terminate')
             proc.terminate()
             # proc.send_signal(subprocess.CTRL_C_EVENT)
 

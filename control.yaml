@@ -1,0 +1,13 @@
+# example file
+version: https://github.com/mo22/control
+name: example
+
+services:
+
+    top:
+        shell: |
+            while true; do
+                date
+                ps waux
+                sleep 10
+            done
