@@ -273,7 +273,6 @@ def main():
     mainparser = argparse.ArgumentParser()
     mainparser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
     mainparser.add_argument('--config', default='control.yaml', help='path to config file')
-    # subparsers = mainparser.add_subparsers(required=True) # @TODO python3 only
     subparsers = mainparser.add_subparsers()
 
 
