@@ -146,9 +146,10 @@ class Service(Executable):
         ],
     }
 
-    def __init__(self, config):
+    def __init__(self, config, name):
         super().__init__()
         self.user = None
+        self.name = name
         self.config = config
 
     def to_dict(self):
@@ -206,7 +207,7 @@ class Config(object):
         self.name = data.pop('name')
         # res.path = os.path.realpath(path) if path else None
         for (key, value) in data.pop('services', {}).items():
-            service = Service(self)
+            service = Service(self, key)
             service.parse_dict(value.copy())
             self.services[key] = service
 
@@ -242,100 +243,32 @@ class Config(object):
 
 
 
-
-
-
-
-
-
-
-config_schema = {
-    'type': 'object',
-    'required': ['name'],
-    'properties': {
-        'name': { 'type': 'string' },
-        'version': { 'type': 'string', 'enum': [ 'https://github.com/mo22/control' ] },
-        'services': {
-            'type': 'object',
-            'additionalProperties': {
-                'type': 'object',
-                'properties': {
-                    'cmd': { 'type': 'string' },
-                    'env': { 'type': 'object' },
-                    'args': { 'type': 'array' },
-                    'run': { 'type': 'string' },
-                    'shell': { 'type': 'string' },
-                },
-                'oneOf': [
-                    { 'required': ['run'] },
-                    { 'required': ['cmd'] },
-                    { 'required': ['shell'] },
-                ],
-            },
-        },
-    },
-}
-
-def config_load(path):
-    with open(path, 'r') as fp:
-        config = yaml.load(fp)
-
-    tmp = Config()
-    tmp.parse_dict(config.copy())
-    tmp.path = path
-    print(yaml.safe_dump(tmp.to_dict()))
-
-    jsonschema.validate(config, config_schema)
-    config['path'] = path
-    if not 'root' in config:
-        config['root'] = os.path.realpath(os.path.dirname(path))
-    if not 'services' in config:
-        config['services'] = {}
-    for name, service in config['services'].items():
-        service['name'] = name
-        if 'run' in service:
-            tmp = shlex.split(service['run'])
-            service['cmd'] = tmp[0]
-            service['args'] = tmp[1:]
-            del service['run']
-        if 'shell' in service:
-            service['cmd'] = '/bin/sh'
-            service['args'] = [ '-c', service['shell'] ]
-            del service['shell']
-        if not 'cwd' in service:
-            service['cwd'] = config['root']
-        if service['cmd'].endswith('.js'):
-            service['args'] = [service['cmd']] + service.get('args', [])
-            service['cmd'] = 'node'
-        if not service['cmd'].startswith('/'):
-            tmp = os.path.join(config['root'], service['cmd'])
-            if os.path.exists(tmp):
-                # print('relative path in cmd', service['cmd'], tmp)
-                service['cmd'] = tmp
-        if not service['cmd'].startswith('/'):
-            tmp = subprocess.check_output(['which', service['cmd']]).strip().decode('utf-8')
-            if os.path.exists(tmp):
-                # print('resolve path', service['cmd'], tmp)
-                service['cmd'] = tmp
-    return config
-
-def config_get_service(config, name):
-    return config['services'].get(name, None)
-
-def config_get_services(config, filter):
-    if isinstance(filter, list):
-        res = []
-        for i in filter:
-            res += config_get_services(config, i)
-        return res
-    if filter in config['services']:
-        return [ config['services'][filter] ]
-    if filter == 'all':
-        return config['services'].values()
-    else:
-        return []
-
-
+class SystemD(object):
+    def install(self, service):
+        pass
+    def uninstall(self, service):
+        pass
+    def uninstall_all(self, prefix):
+        pass
+    def start(self, service):
+        pass
+    def stop(self, service):
+        pass
+    def restart(self, service):
+        pass
+    def reload(self, service):
+        pass
+    def isStarted(self, service):
+        pass
+    def enable(self, service):
+        pass
+    def disable(self, service):
+        pass
+    def isEnabled(self, service):
+        pass
+    def showLog(self, service):
+        pass
+    pass
 
 def systemd_template(config, service):
     # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
@@ -477,6 +410,10 @@ class Commands(object):
                 proc.terminate()
                 proc.wait() # no timeout?
 
+    def install(self, names):
+        for service in self.config.get_services(names):
+            print(service.name)
+
 
 
 def main():
@@ -509,18 +446,19 @@ def main():
         parser.add_argument('name', help='name of service')
         parser.set_defaults(func=lambda args: commands.run(name=args.name))
 
-    # if True:
-    #     def handle(args):
-    #         config = config_load(args.config)
-    #         services = config_get_services(config, args.name)
-    #         for service in services:
-    #             systemd_install(config, service)
-    #     parser = subparsers.add_parser('install', help='install service')
-    #     parser.add_argument('name', nargs='+', help='name of service')
-    #     parser.set_defaults(func=handle)
-    #
-    #
-    #
+    if True:
+        # def handle(args):
+        #     config = config_load(args.config)
+        #     services = config_get_services(config, args.name)
+        #     for service in services:
+        #         systemd_install(config, service)
+        parser = subparsers.add_parser('install', help='install service')
+        parser.add_argument('name', nargs='+', help='name of service')
+        # parser.set_defaults(func=handle)
+        parser.set_defaults(func=lambda args: commands.install(names=args.name))
+
+
+
     # if True:
     #     def handle(args):
     #         config = config_load(args.config)
