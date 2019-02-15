@@ -28,7 +28,7 @@ services:
         type: periodic
         systemd_timer: |
             OnActiveSec=1m
-            OnInactiveSec=1m
+            OnUnitInactiveSec=1m
 
     testcron:
         shell: echo running at $( date ) env $( env )
