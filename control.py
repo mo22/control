@@ -264,6 +264,9 @@ class SystemD(object):
             kwargs['stderr'] = subprocess.DEVNULL
         subprocess.check_call(args, **kwargs)
 
+    def quote(self, s):
+        return pipes.quote(s)
+
     def template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
         # https://www.freedesktop.org/software/systemd/man/systemd.timer.html
@@ -287,7 +290,7 @@ class SystemD(object):
         # cpu quota?
         tpl += 'User=%s\n' % (service.user or 'root', )
         # quote -- newline?
-        tpl += 'ExecStart=%s\n' % (' '.join([ pipes.quote(i) for i in service.args ]), )
+        tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
         tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(service.cwd or os.path.dirname(service.config.path)), )
         if service.env:
             for (k, v) in service.env.items():
@@ -464,7 +467,10 @@ class Commands(object):
         if follow:
             procs = []
             for service in self.config.get_services(names):
-                procs.append(subprocess.Popen(['journalctl', '--no-pager', '-f', '-u', service.config.name + '-' + service.name]))
+                args = ['journalctl', '--no-pager', '-f', '-u', service.config.name + '-' + service.name]
+                if os.getuid() != 0:
+                    args = ['sudo', '-n'] + args
+                procs.append(subprocess.Popen(args))
             if len(procs) > 0:
                 procs[0].wait()
             for proc in procs:
