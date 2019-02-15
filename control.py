@@ -101,6 +101,7 @@ class Service(Executable):
                     'user': { 'type': 'string' },
                     'type': { 'values': ['daemon', 'periodic', 'cron'] },
                     'systemd': { 'type': 'string' },
+                    'systemd_timer': { 'type': 'string' },
                 },
             },
         ],
@@ -111,6 +112,7 @@ class Service(Executable):
         self.user = None
         self.type = None
         self.systemd = None
+        self.systemd_timer = None
         self.name = name
         self.config = config
 
@@ -119,6 +121,7 @@ class Service(Executable):
         res['user'] = self.user
         res['type'] = self.type
         res['systemd'] = self.systemd
+        res['systemd_timer'] = self.systemd_timer
         return res
 
     def __repr__(self):
@@ -130,6 +133,7 @@ class Service(Executable):
         self.user = data.pop('user', None)
         self.type = data.pop('type', None)
         self.systemd = data.pop('systemd', None)
+        self.systemd_timer = data.pop('systemd_timer', None)
 
 
 
@@ -290,11 +294,25 @@ class SystemD(object):
 
     def timer_template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.timer.html
+        # https://www.freedesktop.org/software/systemd/man/systemd.time.html
         if service.type != 'periodic' and service.type != 'cron':
             return None
         tpl = '# created by control.py\n'
         tpl += '# control.yaml=%s\n' % (service.config.path, )
         tpl += '\n'
+        tpl += '[Unit]\n'
+        tpl += 'Description=%s\n' % (service.config.name + '-' + service.name, )
+        tpl += '\n'
+        tpl += '[Timer]\n'
+        if service.systemd_timer:
+            tpl += service.systemd_timer
+            if not service.systemd_timer.endswith('\n'):
+                tpl += '\n'
+        # OnCalendar=weekly
+        # Persistent=true
+        tpl += '\n'
+        tpl += '[Install]\n'
+        tpl += 'WantedBy=timers.target\n'
         return tpl
 
     def install(self, service):
@@ -309,6 +327,7 @@ class SystemD(object):
             self.file_write(target, tpl)
 
         self.run(['systemctl', 'daemon-reload'])
+        self.enable(service)
 
     def uninstall(self, service):
         try:
@@ -331,13 +350,12 @@ class SystemD(object):
                     self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
                 except:
                     continue
-                name = file[0:-len('.service')]
                 try:
-                    self.run(['systemctl', 'stop', name])
+                    self.run(['systemctl', 'stop', file])
                 except subprocess.CalledProcessError:
                     pass
                 try:
-                    self.run(['systemctl', 'disable', name])
+                    self.run(['systemctl', 'disable', file])
                 except subprocess.CalledProcessError:
                     pass
                 self.file_delete(os.path.join(self.unit_path, file))
@@ -346,23 +364,27 @@ class SystemD(object):
                     self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
                 except:
                     continue
+                try:
+                    self.run(['systemctl', 'disable', file])
+                except subprocess.CalledProcessError:
+                    pass
                 self.file_delete(os.path.join(self.unit_path, file))
 
     def start(self, service):
-        self.run(['systemctl', 'start', service.config.name + '-' + service.name])
+        self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
 
     def stop(self, service):
-        self.run(['systemctl', 'stop', service.config.name + '-' + service.name])
+        self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.service'])
 
     def restart(self, service):
-        self.run(['systemctl', 'restart', service.config.name + '-' + service.name])
+        self.run(['systemctl', 'restart', service.config.name + '-' + service.name + '.service'])
 
     def reload(self, service):
-        self.run(['systemctl', 'reload', service.config.name + '-' + service.name])
+        self.run(['systemctl', 'reload', service.config.name + '-' + service.name + '.service'])
 
     def is_started(self, service):
         try:
-            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name], silent=True)
+            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name + '.service'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
             if e.returncode == 3:
@@ -370,14 +392,23 @@ class SystemD(object):
             raise e
 
     def enable(self, service):
-        self.run(['systemctl', 'enable', service.config.name + '-' + service.name])
+        if service.type == 'daemon':
+            self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.service'])
+        elif service.type == 'periodic' or service.type == 'cron':
+            self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.timer'])
 
     def disable(self, service):
-        self.run(['systemctl', 'disable', service.config.name + '-' + service.name])
+        if service.type == 'daemon':
+            self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.service'])
+        elif service.type == 'periodic' or service.type == 'cron':
+            self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.timer'])
 
     def is_enabled(self, service):
         try:
-            self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name], silent=True)
+            if service.type == 'daemon':
+                self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name + '.service'], silent=True)
+            elif service.type == 'periodic' or service.type == 'cron':
+                self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name + '.timer'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
             if e.returncode == 1:
@@ -418,8 +449,6 @@ class Commands(object):
         backend = SystemD()
         for service in self.config.get_services(names):
             backend.install(service)
-            if service.type is not None:
-                backend.enable(service)
 
     def uninstall(self, names):
         backend = SystemD()

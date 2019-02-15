@@ -23,6 +23,19 @@ services:
         systemd: RuntimeMaxSec=5m
         # works!
 
+    testperiodic:
+        shell: echo running at $( date )
+        type: periodic
+        systemd_timer: OnUnitInactiveSec=1m
+        # OnCalendar
+        # RandomizedDelaySec
+        # Persistent -> recover missed intervals
+
+    testcron:
+        shell: echo running at $( date )
+        type: cron
+        systemd_timer: OnCalendar=minutely
+
     test-path:
         run: date
 

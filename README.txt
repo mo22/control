@@ -1,8 +1,9 @@
 TODO
 
+[ ] type=daemon auto enable on install? yes.
+
 [ ] Config.groups  + Group
 
-[ ] Service. cpu/mem quota?
 [ ] Service. max runtime?
 [ ] Service. start type (calendar, interval, daemon)
 
