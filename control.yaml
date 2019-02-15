@@ -57,6 +57,7 @@ services:
 
     testundead:
         run: undead.py
+        # ?? -> TimeoutStopSec = how long to wait for shutdown before SIGKILL
 
     # something that does not die...
     # or something that does not start?
