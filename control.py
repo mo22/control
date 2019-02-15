@@ -365,6 +365,10 @@ class SystemD(object):
                 except:
                     continue
                 try:
+                    self.run(['systemctl', 'stop', file])
+                except subprocess.CalledProcessError:
+                    pass
+                try:
                     self.run(['systemctl', 'disable', file])
                 except subprocess.CalledProcessError:
                     pass
@@ -396,11 +400,13 @@ class SystemD(object):
             self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
             self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.timer'])
+            self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.timer'])
 
     def disable(self, service):
         if service.type == 'daemon':
             self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
+            self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.timer'])
             self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.timer'])
 
     def is_enabled(self, service):
