@@ -1,11 +1,8 @@
 TODO
 
-[ ] Config.get_service()
-[ ] Config.get_services()
-
 [ ] Config.groups  + Group
 
-[ ] Service. [ restart | user | autostart | calendar | interval ]
+[ ] Service. [ restart | user | type? | autostart | calendar | interval ]
 
 
 
