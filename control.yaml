@@ -13,17 +13,9 @@ services:
             done
         type: daemon
 
-    t1:
-        shell: |
-            while true; do
-                date
-                sleep 10
-            done
-
     cpustress:
         run: stress -c 2
         systemd: CPUQuota=10%
-        # this works
 
     test-path:
         run: date
