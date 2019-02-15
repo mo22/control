@@ -11,14 +11,17 @@ services:
     cpustress:
         run: stress -c 2
         systemd: CPUQuota=10%
+        # works!
 
     memstress:
         run: stress -m 1
         systemd: MemoryMax=100M
+        # works!
 
     maxtime:
         shell: while true; do date; sleep 30; done
         systemd: RuntimeMaxSec=5m
+        # works!
 
     test-path:
         run: date
