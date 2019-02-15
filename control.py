@@ -213,6 +213,11 @@ class SystemD(object):
     unit_path = '/etc/systemd/system/'
 
     def file_write(self, path, content):
+        try:
+            if self.read_file(path) == content:
+                return
+        except:
+            pass
         if os.geteuid() == 0:
             with open(path, 'w') as fp:
                 fp.write(content)
@@ -249,9 +254,8 @@ class SystemD(object):
         else:
             return pipes.quote(s)
 
-    def template(self, service):
+    def service_template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
-        # https://www.freedesktop.org/software/systemd/man/systemd.timer.html
         # https://www.freedesktop.org/software/systemd/man/systemd.service.html
         tpl = '# created by control.py\n'
         tpl += '# control.yaml=%s\n' % (service.config.path, )
@@ -284,35 +288,65 @@ class SystemD(object):
 
         return tpl
 
+    def timer_template(self, service):
+        # https://www.freedesktop.org/software/systemd/man/systemd.timer.html
+        if service.type != 'periodic' and service.type != 'cron':
+            return None
+        tpl = '# created by control.py\n'
+        tpl += '# control.yaml=%s\n' % (service.config.path, )
+        tpl += '\n'
+        return tpl
+
     def install(self, service):
-        target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
-        tpl = self.template(service)
-        try:
-            if self.file_read(target) == tpl:
-                return
-        except:
-            pass
-        self.file_write(target, tpl)
+        tpl = self.service_template(service)
+        if tpl:
+            target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
+            self.file_write(target, tpl)
+
+        tpl = self.timer_template(service)
+        if tpl:
+            target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.timer')
+            self.file_write(target, tpl)
+
         self.run(['systemctl', 'daemon-reload'])
 
     def uninstall(self, service):
+        try:
+            self.stop(service)
+        except:
+            pass
+        try:
+            self.disable(service)
+        except:
+            pass
         target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
+        self.file_delete(target)
+        target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.timer')
         self.file_delete(target)
 
     def uninstall_all(self, config):
         for file in os.listdir(self.unit_path):
-            if not file.endswith('.service'):
-                continue
-            try:
-                self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
-            except:
-                continue
-            name = file[0:-len('.service')]
-            try:
-                self.run(['systemctl', 'disable', name])
-            except subprocess.CalledProcessError:
-                pass
-            self.file_delete(os.path.join(self.unit_path, file))
+            if file.endswith('.service'):
+                try:
+                    self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
+                except:
+                    continue
+                name = file[0:-len('.service')]
+                try:
+                    self.run(['systemctl', 'stop', name])
+                except subprocess.CalledProcessError:
+                    pass
+                try:
+                    self.run(['systemctl', 'disable', name])
+                except subprocess.CalledProcessError:
+                    pass
+                self.file_delete(os.path.join(self.unit_path, file))
+            if file.endswith('.timer'):
+                try:
+                    self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
+                except:
+                    continue
+                self.file_delete(os.path.join(self.unit_path, file))
 
     def start(self, service):
         self.run(['systemctl', 'start', service.config.name + '-' + service.name])
@@ -384,7 +418,8 @@ class Commands(object):
         backend = SystemD()
         for service in self.config.get_services(names):
             backend.install(service)
-            backend.enable(service)
+            if service.type is not None:
+                backend.enable(service)
 
     def uninstall(self, names):
         backend = SystemD()

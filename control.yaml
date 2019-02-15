@@ -5,11 +5,7 @@ name: example
 services:
 
     daemon:
-        shell: |
-            while true; do
-                date
-                sleep 10
-            done
+        shell: while true; do date; sleep 10; done
         type: daemon
 
     cpustress:
