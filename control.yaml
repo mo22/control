@@ -26,7 +26,7 @@ services:
     testperiodic:
         shell: echo running at $( date )
         type: periodic
-        systemd_timer: OnUnitInactiveSec=1m
+        systemd_timer: OnActiveSec=1m
         # OnCalendar
         # RandomizedDelaySec
         # Persistent -> recover missed intervals
@@ -34,7 +34,10 @@ services:
     testcron:
         shell: echo running at $( date ) env $( env )
         type: cron
-        systemd_timer: OnCalendar=minutely
+        systemd_timer: |
+            OnCalendar=minutely
+            RandomizedDelaySec=15s
+        # randomized delay?
 
     test-path:
         run: date
