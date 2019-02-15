@@ -61,3 +61,5 @@ services:
 
     # something that does not die...
     # or something that does not start?
+
+# onchange . scp control.py control.yaml beta.mxs.de:control/
