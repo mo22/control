@@ -4,11 +4,10 @@ name: example
 
 services:
 
-    top:
+    daemon:
         shell: |
             while true; do
                 date
-                ps waux
                 sleep 10
             done
         type: daemon
@@ -16,6 +15,10 @@ services:
     cpustress:
         run: stress -c 2
         systemd: CPUQuota=10%
+
+    memstress:
+        run: stress -m 1
+        systemd: MemoryMax=100M
 
     test-path:
         run: date
