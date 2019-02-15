@@ -274,7 +274,7 @@ class SystemD(object):
                 tpl += 'Environment=%s=%s\n' % (k, v)
         if service.systemd:
             tpl += service.systemd
-            if not service.systemd.endwith('\n'):
+            if not service.systemd.endswith('\n'):
                 tpl += '\n'
 
         if service.type == 'daemon':
