@@ -13,17 +13,23 @@ services:
             done
         type: daemon
 
+    t1:
+        shell: |
+            while true; do
+                date
+                sleep 10
+            done
+
+    cpustress:
+        run: stress -c 2
+        systemd: |
+            CPUQuota=10%
+
     test-path:
         run: date
-        type: daemon
 
     test-js:
         cmd: test.js
-        type: daemon
 
     test-py:
         cmd: test.py
-        type: daemon
-        user: root
-        # cpu quota
-        # mem quota

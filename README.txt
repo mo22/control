@@ -2,29 +2,10 @@ TODO
 
 [ ] Config.groups  + Group
 
-[ ] Service. [ restart | user | type? | autostart | calendar | interval ]
+[ ] Service. cpu/mem quota?
+[ ] Service. max runtime?
+[ ] Service. start type (calendar, interval, daemon)
 
-
-
-
-
-[ ] execute method with sudo wrapper
-
-[ ] command: reload
-[ ] command: uninstall. search systemd files based on marker comment?
-
-[ ] config: groups:
-
-[ ] config: service: user?, restart?
-
-[ ] config: triggers. cron? calendar-cron? onboot?
-
-[ ] config: env: to define environment variables?
-[ ] config: string interpolation? no standard.
-
-[ ] method to resolve { run, shell, cmd, args } to command list?
-
-[ ] pre-start script to verify dependencies or something?
-[ ] pre-install script to install dependencies?
+[ ] Service.systemd and prefix?
 
 [ ] plugins

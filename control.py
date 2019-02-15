@@ -99,6 +99,8 @@ class Service(Executable):
                 'type': 'object',
                 'properties': {
                     'user': { 'type': 'string' },
+                    'type': { 'values': ['daemon', 'periodic', 'cron'] },
+                    'systemd': { 'type': 'string' },
                 },
             },
         ],
@@ -107,12 +109,16 @@ class Service(Executable):
     def __init__(self, config, name):
         super().__init__()
         self.user = None
+        self.type = None
+        self.systemd = None
         self.name = name
         self.config = config
 
     def to_dict(self):
         res = super().to_dict()
         res['user'] = self.user
+        res['type'] = self.type
+        res['systemd'] = self.systemd
         return res
 
     def __repr__(self):
@@ -122,6 +128,8 @@ class Service(Executable):
         jsonschema.validate(data, self.schema)
         super().parse_dict(data)
         self.user = data.pop('user', None)
+        self.type = data.pop('type', None)
+        self.systemd = data.pop('systemd', None)
 
 
 
@@ -238,7 +246,6 @@ class SystemD(object):
         # https://www.freedesktop.org/software/systemd/man/systemd-escape.html
         if '\n' in s:
             return '\\$' + pipes.quote(s).replace('\n', '\\n')
-            # return "$'" + s.replace('\\', '\\\\').replace('\n', '\\n').replace('\'', '\\\'').replace('"', '\\"').replace('\t', '\\t') + "'"
         else:
             return pipes.quote(s)
 
@@ -257,25 +264,22 @@ class SystemD(object):
 
         tpl += '[Service]\n'
         tpl += 'Type=simple\n'
-        # tpl += 'KillMode=process\n'
         tpl += 'Restart=on-failure\n' # config?
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
-        # if 'nofile' in service:
-        #     tpl += 'LimitNOFILE=%d\n' % (service['nofile'], )
-        # cpu quota?
         tpl += 'User=%s\n' % (service.user or 'root', )
-        # quote -- newline?
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
         tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(service.cwd or os.path.dirname(service.config.path)), )
         if service.env:
             for (k, v) in service.env.items():
                 tpl += 'Environment=%s=%s\n' % (k, v)
+        if service.systemd:
+            tpl += service.systemd
 
-        # @TODO: only if auto-start
-        tpl += '\n'
-        tpl += '[Install]\n'
-        tpl += 'WantedBy=multi-user.target\n'
-        return tpl
+        if service.type == 'daemon':
+            tpl += '\n'
+            tpl += '[Install]\n'
+            tpl += 'WantedBy=multi-user.target\n'
+            return tpl
 
     def install(self, service):
         target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
