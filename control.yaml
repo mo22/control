@@ -20,6 +20,10 @@ services:
         run: stress -m 1
         systemd: MemoryMax=100M
 
+    maxtime:
+        shell: while true; do date; sleep 30; done
+        systemd: RuntimeMaxSec=5m
+
     test-path:
         run: date
 

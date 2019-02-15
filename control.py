@@ -384,6 +384,7 @@ class Commands(object):
         backend = SystemD()
         for service in self.config.get_services(names):
             backend.install(service)
+            backend.enable(service)
 
     def uninstall(self, names):
         backend = SystemD()
