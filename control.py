@@ -255,11 +255,14 @@ class SystemD(object):
         else:
             subprocess.call(['sudo', '-n', 'rm', path])
 
-    def run(self, args):
+    def run(self, args, silent=False):
         if os.geteuid() != 0:
             args = ['sudo', '-n'] + args
-        print('SystemD.run', args)
-        subprocess.check_call(args)
+        kwargs = {}
+        if silent:
+            kwargs['stdout'] = subprocess.DEVNULL
+            kwargs['stderr'] = subprocess.DEVNULL
+        subprocess.check_call(args, **kwargs)
 
     def template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
@@ -339,7 +342,13 @@ class SystemD(object):
         self.run(['systemctl', 'reload', service.config.name + '-' + service.name])
 
     def is_started(self, service):
-        self.run(['systemctl', 'is-active', service.config.name + '-' + service.name])
+        try:
+            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name], silent=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 3:
+                return False
+            raise e
 
     def enable(self, service):
         self.run(['systemctl', 'enable', service.config.name + '-' + service.name])
@@ -348,7 +357,13 @@ class SystemD(object):
         self.run(['systemctl', 'disable', service.config.name + '-' + service.name])
 
     def is_enabled(self, service):
-        self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name])
+        try:
+            self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name], silent=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 1:
+                return False
+            raise e
 
     def show_log(self, service):
         # ...?
@@ -436,6 +451,17 @@ class Commands(object):
         service = self.config.get_service(name)
         backend.is_enabled(service)
 
+    def status(self, names, full=False):
+        if len(names) == 0:
+            names = 'all'
+        backend = SystemD()
+        for service in self.config.get_services(names):
+            print(service.name, backend.is_enabled(service), backend.is_started(service))
+            if full:
+                backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+
+    def log(self, names, follow=False):
+        pass
 
 
 
@@ -501,7 +527,7 @@ def main():
     if True:
         parser = subparsers.add_parser('is-started', help='check if service is started')
         parser.add_argument('name', help='name of service')
-        parser.set_defaults(func=lambda args: commands.is_started(names=args.name))
+        parser.set_defaults(func=lambda args: commands.is_started(name=args.name))
 
     if True:
         parser = subparsers.add_parser('enable', help='enable service')
@@ -516,7 +542,7 @@ def main():
     if True:
         parser = subparsers.add_parser('is-enabled', help='check if service is enabled')
         parser.add_argument('name', help='name of service')
-        parser.set_defaults(func=lambda args: commands.is_enabled(names=args.name))
+        parser.set_defaults(func=lambda args: commands.is_enabled(name=args.name))
 
     if True:
         parser = subparsers.add_parser('status', help='list services and status')
