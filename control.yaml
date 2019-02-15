@@ -51,3 +51,9 @@ services:
 
     test-py:
         cmd: test.py
+
+    testfail:
+        run: fail.py
+
+    # something that does not die...
+    # or something that does not start?
