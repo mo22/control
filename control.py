@@ -265,7 +265,13 @@ class SystemD(object):
         subprocess.check_call(args, **kwargs)
 
     def quote(self, s):
-        return pipes.quote(s)
+        # @TODO: in unit file $ needs to be escaped
+        # @TODO: also bash stuff needs to be escaped.
+        if '\n' in s:
+            return '\\$' + pipes.quote(s).replace('\n', '\\n')
+            # return "$'" + s.replace('\\', '\\\\').replace('\n', '\\n').replace('\'', '\\\'').replace('"', '\\"').replace('\t', '\\t') + "'"
+        else:
+            return pipes.quote(s)
 
     def template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
@@ -310,8 +316,8 @@ class SystemD(object):
                 return
         except:
             pass
-        print(target)
         self.file_write(target, tpl)
+        self.run(['systemctl', 'daemon-reload'])
 
     def uninstall(self, service):
         target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
