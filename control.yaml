@@ -22,8 +22,8 @@ services:
 
     cpustress:
         run: stress -c 2
-        systemd: |
-            CPUQuota=10%
+        systemd: CPUQuota=10%
+        # this works
 
     test-path:
         run: date

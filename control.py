@@ -274,12 +274,15 @@ class SystemD(object):
                 tpl += 'Environment=%s=%s\n' % (k, v)
         if service.systemd:
             tpl += service.systemd
+            if not service.systemd.endwith('\n'):
+                tpl += '\n'
 
         if service.type == 'daemon':
             tpl += '\n'
             tpl += '[Install]\n'
             tpl += 'WantedBy=multi-user.target\n'
-            return tpl
+
+        return tpl
 
     def install(self, service):
         target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
