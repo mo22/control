@@ -365,10 +365,6 @@ class SystemD(object):
                 return False
             raise e
 
-    def show_log(self, service):
-        # ...?
-        self.run(['journalctl', '-u', service.config.name + '-' + service.name])
-
 
 
 class Commands(object):
@@ -458,10 +454,27 @@ class Commands(object):
         for service in self.config.get_services(names):
             print(service.name, backend.is_enabled(service), backend.is_started(service))
             if full:
-                backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+                try:
+                    backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+                except subprocess.CalledProcessError:
+                    pass
 
     def log(self, names, follow=False):
-        pass
+        backend = SystemD()
+        if follow:
+            procs = []
+            for service in self.config.get_services(names):
+                procs.append(subprocess.Popen(['journalctl', '--no-pager', '-f', '-u', service.config.name + '-' + service.name]))
+            if len(procs) > 0:
+                procs[0].wait()
+            for proc in procs:
+                proc.terminate()
+            for proc in procs:
+                proc.wait()
+
+        else:
+            for service in self.config.get_services(names):
+                backend.run(['journalctl', '--no-pager', '-u', service.config.name + '-' + service.name])
 
 
 
