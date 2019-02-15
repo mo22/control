@@ -13,38 +13,6 @@ import io
 
 
 
-# DEVNULL = open(os.devnull, 'w')
-
-
-
-def execute(
-    args,
-    stdin=None,
-    stdout=None,
-    stderr=None,
-    cwd=None,
-    env=None
-):
-    # @TODO: return status?
-    # @TODO: devnull stdout, stderr etc.?
-    # @TODO: sudo?
-    # @TODO: pass string as stdin? get string from stdout?
-    proc = subprocess.Popen(
-        args,
-        stdin=stdin, stdout=stdout, stderr=stderr,
-        cwd=cwd,
-        env=env,
-    )
-    proc.wait()
-    # if retcode:
-    #     cmd = kwargs.get("args")
-    #     if cmd is None:
-    #         cmd = popenargs[0]
-    #     raise CalledProcessError(retcode, cmd)
-
-
-
-
 class Executable(object):
     schema = {
         'type': 'object',
@@ -267,6 +235,7 @@ class SystemD(object):
     def quote(self, s):
         # @TODO: in unit file $ needs to be escaped
         # @TODO: also bash stuff needs to be escaped.
+        # https://www.freedesktop.org/software/systemd/man/systemd-escape.html
         if '\n' in s:
             return '\\$' + pipes.quote(s).replace('\n', '\\n')
             # return "$'" + s.replace('\\', '\\\\').replace('\n', '\\n').replace('\'', '\\\'').replace('"', '\\"').replace('\t', '\\t') + "'"
@@ -461,7 +430,11 @@ class Commands(object):
             names = 'all'
         backend = SystemD()
         for service in self.config.get_services(names):
-            print(service.name, backend.is_enabled(service), backend.is_started(service))
+            print('{:20s} {:10s} {:10s}'.format(
+                service.name,
+                'enabled' if backend.is_enabled(service) else 'disabled',
+                'running' if backend.is_started(service) else 'stopped'
+            ))
             if full:
                 try:
                     backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
