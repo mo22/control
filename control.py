@@ -10,6 +10,7 @@ import jsonschema
 import shlex
 import pipes
 import io
+import time
 
 
 
@@ -345,7 +346,7 @@ class SystemD(object):
 
     def uninstall_all(self, config):
         for file in os.listdir(self.unit_path):
-            if file.endswith('.service'):
+            if file.endswith('.timer'):
                 try:
                     self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
                 except:
@@ -359,7 +360,8 @@ class SystemD(object):
                 except subprocess.CalledProcessError:
                     pass
                 self.file_delete(os.path.join(self.unit_path, file))
-            if file.endswith('.timer'):
+        for file in os.listdir(self.unit_path):
+            if file.endswith('.service'):
                 try:
                     self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
                 except:
@@ -375,7 +377,15 @@ class SystemD(object):
                 self.file_delete(os.path.join(self.unit_path, file))
 
     def start(self, service):
-        self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
+        try:
+            self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
+            time.sleep(1)
+            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name + '.service'], silent=True)
+        except subprocess.CalledProcessError as e:
+            try:
+                self.run(['systemctl', 'status', service.config.name + '-' + service.name + '.service'])
+            except subprocess.CalledProcessError:
+                pass
 
     def stop(self, service):
         self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.service'])

@@ -55,5 +55,8 @@ services:
     testfail:
         run: fail.py
 
+    testundead:
+        run: undead.py
+
     # something that does not die...
     # or something that does not start?
