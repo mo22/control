@@ -32,7 +32,7 @@ services:
         # Persistent -> recover missed intervals
 
     testcron:
-        shell: echo running at $( date )
+        shell: echo running at $( date ) env $( env )
         type: cron
         systemd_timer: OnCalendar=minutely
 
