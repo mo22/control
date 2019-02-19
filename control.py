@@ -250,14 +250,22 @@ class SystemD(object):
             kwargs['stderr'] = subprocess.DEVNULL
         subprocess.check_call(args, **kwargs)
 
-    def quote(self, s):
+    def oldquote(self, s):
         # @TODO: in unit file $ needs to be escaped
         # @TODO: also bash stuff needs to be escaped.
         # https://www.freedesktop.org/software/systemd/man/systemd-escape.html
+        # https://www.freedesktop.org/software/systemd/man/systemd.service.html#Command%20lines
         if '\n' in s:
             return '\\$' + pipes.quote(s).replace('\n', '\\n')
         else:
             return pipes.quote(s)
+
+    def quote(self, s):
+        # escape for systemd
+        if not re.search('[\x00-\x1f\x7f-\x9f]', s):
+            return s
+        # repr pretty much matches systemd escaping.. but verify this
+        return repr(s)
 
     def service_template(self, service):
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
