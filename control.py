@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# pylama:ignore=E501,E303,E302,E305,E722,E201,E202,D100,D101,D102,D103,D105,D107,C901
+
 from __future__ import print_function
 import os
 import sys
@@ -9,26 +11,26 @@ import yaml
 import jsonschema
 import shlex
 import pipes
-import io
 import time
 
 
-
 class Executable(object):
+    """Executable."""
+
     schema = {
         'type': 'object',
         'properties': {
-            'cmd': { 'type': 'string' },
-            'env': { 'type': 'object' },
-            'args': { 'type': 'array' },
-            'run': { 'type': 'string' },
-            'shell': { 'type': 'string' },
-            'cwd': { 'type': 'string' },
+            'cmd': {'type': 'string'},
+            'env': {'type': 'object'},
+            'args': {'type': 'array'},
+            'run': {'type': 'string'},
+            'shell': {'type': 'string'},
+            'cwd': {'type': 'string'},
         },
         'oneOf': [
-            { 'required': ['run'] },
-            { 'required': ['cmd'] },
-            { 'required': ['shell'] },
+            {'required': ['run']},
+            {'required': ['cmd']},
+            {'required': ['shell']},
         ],
     }
 
@@ -40,8 +42,10 @@ class Executable(object):
     def to_dict(self):
         res = {}
         res['args'] = self.args
-        if self.env: res['env'] = self.env
-        if self.cwd: res['cwd'] = self.cwd
+        if self.env:
+            res['env'] = self.env
+        if self.cwd:
+            res['cwd'] = self.cwd
         return res
 
     def __repr__(self):
@@ -55,11 +59,11 @@ class Executable(object):
 
         if 'shell' in data:
             assert self.args is None
-            self.args = [ '/bin/sh', '-c', data.pop('shell') ]
+            self.args = ['/bin/sh', '-c', data.pop('shell')]
 
         if 'cmd' in data:
             assert self.args is None
-            self.args = [ data.pop('cmd') ] + data.pop('args', [])
+            self.args = [data.pop('cmd')] + data.pop('args', [])
 
         if 'cwd' in data:
             self.cwd = os.path.realpath(data.pop('cwd'))
@@ -79,7 +83,7 @@ class Executable(object):
         if not os.access(resolve(self.args[0]), os.X_OK) and self.args[0].endswith('.py'):
             self.args = ['python'] + self.args
 
-        if not os.path.isfile(resolve(self.args[0])) and not '/' in self.args[0]:
+        if not os.path.isfile(resolve(self.args[0])) and '/' not in self.args[0]:
             try:
                 tmp = subprocess.check_output(['which', self.args[0]]).strip()
                 self.args[0] = tmp.decode('utf-8')
@@ -162,7 +166,7 @@ class Config(object):
         res = {}
         res['version'] = self.version
         res['name'] = self.name
-        res['path'] = self.path # ?
+        res['path'] = self.path  # ?
         res['services'] = {}
         for k, v in self.services.items():
             res['services'][k] = v.to_dict()
@@ -202,16 +206,13 @@ class Config(object):
             return res
 
         if filter in self.services:
-            return [ self.services[filter] ]
+            return [self.services[filter]]
 
         if filter == 'all':
             return self.services.values()
 
         else:
             return []
-
-
-
 
 
 class SystemD(object):
@@ -281,7 +282,7 @@ class SystemD(object):
 
         tpl += '[Service]\n'
         tpl += 'Type=simple\n'
-        tpl += 'Restart=on-failure\n' # config?
+        tpl += 'Restart=on-failure\n'  # config?
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
@@ -389,7 +390,7 @@ class SystemD(object):
             self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
             time.sleep(1)
             self.run(['systemctl', 'is-active', service.config.name + '-' + service.name + '.service'], silent=True)
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             try:
                 self.run(['systemctl', 'status', service.config.name + '-' + service.name + '.service'])
             except subprocess.CalledProcessError:
@@ -467,7 +468,7 @@ class Commands(object):
                 sys.exit(exitcode)
             except KeyboardInterrupt:
                 proc.terminate()
-                proc.wait() # no timeout?
+                proc.wait()  # no timeout?
 
     def install(self, names):
         backend = SystemD()
@@ -558,6 +559,11 @@ class Commands(object):
                 backend.run(['journalctl', '--no-pager', '-u', service.config.name + '-' + service.name])
 
 
+def add(a: int, b: int) -> int:
+    return a + b
+
+def dummy():
+    add('test', 3)
 
 def main():
     import argparse
@@ -651,7 +657,7 @@ def main():
         parser.set_defaults(func=lambda args: commands.log(names=args.name, follow=args.follow))
 
     args = mainparser.parse_args()
-    if not 'func' in args:
+    if 'func' not in args:
         mainparser.print_usage()
         sys.exit(1)
 
@@ -664,7 +670,6 @@ def main():
     commands = Commands(config)
 
     args.func(args)
-
 
 
 if __name__ == '__main__':
