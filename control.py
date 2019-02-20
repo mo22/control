@@ -12,6 +12,7 @@ import jsonschema
 import shlex
 import pipes
 import time
+from typing import Dict, Any
 
 
 class Executable(object):
@@ -34,13 +35,17 @@ class Executable(object):
         ],
     }
 
-    def __init__(self):
+    # args: List<str>
+    # env: Dict<str, str>
+    # cwd: str
+
+    def __init__(self) -> None:
         self.args = None
         self.env = None
         self.cwd = None
 
     def to_dict(self):
-        res = {}
+        res: Dict[str, str] = {}
         res['args'] = self.args
         if self.env:
             res['env'] = self.env
@@ -48,10 +53,10 @@ class Executable(object):
             res['cwd'] = self.cwd
         return res
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.to_dict())
 
-    def parse_dict(self, data):
+    def parse_dict(self, data: Dict[str, Any]) -> None:
         jsonschema.validate(data, self.schema)
 
         if 'run' in data:
