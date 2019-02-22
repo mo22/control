@@ -10,3 +10,5 @@ TODO
 [ ] Service.systemd and prefix?
 
 [ ] plugins
+
+pip3 install git+https://github.com/mo22/control
