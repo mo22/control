@@ -1,5 +1,10 @@
-# -*- coding: utf8 -*-
 from setuptools import setup
+
+# package_dir={'': 'src'},
+# packages=find_packages('src'),
+# __init__.py
+
+
 setup(
     name         = 'control',
     packages     = ['control'],
