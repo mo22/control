@@ -9,7 +9,7 @@ setup(
     name         = 'control',
     packages     = ['control'],
     #package_dir  = { 'control': '.' },
-    #scripts      = ['control'],
+    scripts      = ['control/control.py'],
     version      = '0.2',
     description  = 'manage processes',
     author       = 'Moritz Moeller',
