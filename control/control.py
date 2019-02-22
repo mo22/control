@@ -204,7 +204,7 @@ class Config:
         return self.services.get(name, None)
 
     def get_services(self, filter):
-        if isinstance(filter, Iterable):
+        if isinstance(filter, list):
             res = []
             for i in filter:
                 res += self.get_services(i)
