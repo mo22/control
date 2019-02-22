@@ -591,8 +591,7 @@ def main():
     subparsers = mainparser.add_subparsers()
 
     config = None
-    commands: Commands
-    # = None
+    commands = None
 
     if True:
         parser = subparsers.add_parser('dump', help='dump parsed configuration')
