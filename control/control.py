@@ -39,7 +39,7 @@ class Executable:
         self.env = None
         self.cwd = None
 
-    def to_dict(self)
+    def to_dict(self):
         res = {}
         if self.args:
             res['args'] = self.args
