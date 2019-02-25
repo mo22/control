@@ -20,17 +20,17 @@ class Executable:
     schema = {
         'type': 'object',
         'properties': {
-            'cmd': {'type': 'string'},
-            'env': {'type': 'object'},
-            'args': {'type': 'array'},
-            'run': {'type': 'string'},
-            'shell': {'type': 'string'},
-            'cwd': {'type': 'string'},
+            'cmd': { 'type': 'string' },
+            'env': { 'type': 'object' },
+            'args': { 'type': 'array' },
+            'run': { 'type': 'string' },
+            'shell': { 'type': 'string' },
+            'cwd': { 'type': 'string' },
         },
         'oneOf': [
-            {'required': ['run']},
-            {'required': ['cmd']},
-            {'required': ['shell']},
+            { 'required': ['run'] },
+            { 'required': ['cmd'] },
+            { 'required': ['shell'] },
         ],
     }
 
@@ -247,7 +247,7 @@ class SystemD:
         else:
             subprocess.call(['sudo', '-n', 'rm', path])
 
-    def run(self, args, silent = False):
+    def run(self, args, silent=False):
         if os.geteuid() != 0:
             args = ['sudo', '-n'] + args
         kwargs = {}
@@ -539,7 +539,7 @@ class Commands:
         service = self.config.get_service(name)
         backend.is_enabled(service)
 
-    def status(self, names, full = False):
+    def status(self, names, full=False):
         if len(names) == 0:
             names = 'all'
         backend = SystemD()
@@ -555,7 +555,7 @@ class Commands:
                 except subprocess.CalledProcessError:
                     pass
 
-    def log(self, names, follow = False):
+    def log(self, names, follow=False):
         backend = SystemD()
         if follow:
             procs = []
