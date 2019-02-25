@@ -91,6 +91,8 @@ class Executable:
             except:
                 pass
 
+        self.args[0] = resolve(self.args[0])
+
         # @TODO: really?
         assert os.path.isfile(resolve(self.args[0])), 'does not exist: {}'.format(resolve(self.args[0]))
         assert os.access(resolve(self.args[0]), os.X_OK), 'not executable: {}'.format(resolve(self.args[0]))
