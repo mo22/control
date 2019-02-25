@@ -329,6 +329,11 @@ class SystemD:
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
         tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(service.cwd or os.path.dirname(service.config.path)), )
+        # RuntimeMaxSec=5m
+        # MemoryMax=100M
+        # CPUQuota=10%
+        # LimitNOFILE=32768
+
         if service.env:
             for (k, v) in service.env.items():
                 tpl += 'Environment=%s=%s\n' % (k, v)
