@@ -10,7 +10,6 @@ import logging
 import yaml
 import jsonschema
 import shlex
-import pipes
 import time
 
 
@@ -109,8 +108,26 @@ class Service(Executable):
                     'user': { 'type': 'string' },
                     'type': { 'values': ['daemon', 'periodic', 'cron'] },
                     'systemd': { 'type': 'string' },
-                    'systemd_timer': { 'type': 'string' },
                 },
+                'oneOf': [
+                    {
+                        'properties': {
+                            'type': { 'values': ['cron'] },
+                            'systemd_timer': { 'type': 'string' },
+                            'cron': { 'type': 'string' },
+                            'random_delay': { 'type': 'string' },
+                        },
+                    },
+                    {
+                        'properties': {
+                            'type': { 'values': ['periodic'] },
+                            'systemd_timer': { 'type': 'string' },
+                            'interval': { 'type': 'string' },
+                            'first_interval': { 'type': 'string' },
+                            'random_delay': { 'type': 'string' },
+                        },
+                    },
+                ],
             },
         ],
     }
@@ -121,6 +138,10 @@ class Service(Executable):
         self.type = None
         self.systemd = None
         self.systemd_timer = None
+        self.interval = None
+        self.first_interval = None
+        self.random_delay = None
+        self.cron = None
         self.name = name
         self.config = config
 
@@ -134,6 +155,14 @@ class Service(Executable):
             res['systemd'] = self.systemd
         if self.systemd_timer:
             res['systemd_timer'] = self.systemd_timer
+        if self.interval:
+            res['interval'] = self.interval
+        if self.first_interval:
+            res['first_interval'] = self.first_interval
+        if self.random_delay:
+            res['random_delay'] = self.random_delay
+        if self.cron:
+            res['cron'] = self.cron
         return res
 
     def __repr__(self):
@@ -146,6 +175,10 @@ class Service(Executable):
         self.type = data.pop('type', None)
         self.systemd = data.pop('systemd', None)
         self.systemd_timer = data.pop('systemd_timer', None)
+        self.interval = data.pop('interval', None)
+        self.first_interval = data.pop('first_interval', None)
+        self.random_delay = data.pop('random_delay', None)
+        self.cron = data.pop('cron', None)
 
 
 
@@ -231,6 +264,7 @@ class SystemD:
                 return
         except:
             pass
+        print('updating', path)
         if os.geteuid() == 0:
             with open(path, 'w') as fp:
                 fp.write(content)
@@ -258,16 +292,6 @@ class SystemD:
             kwargs['stderr'] = subprocess.DEVNULL
         subprocess.check_call(args, **kwargs)
 
-    def oldquote(self, s):
-        # @TODO: in unit file $ needs to be escaped
-        # @TODO: also bash stuff needs to be escaped.
-        # https://www.freedesktop.org/software/systemd/man/systemd-escape.html
-        # https://www.freedesktop.org/software/systemd/man/systemd.service.html#Command%20lines
-        if '\n' in s:
-            return '\\$' + pipes.quote(s).replace('\n', '\\n')
-        else:
-            return pipes.quote(s)
-
     def quote(self, s):
         # escape for systemd
         if not re.search('[\x00-\x1f\x7f-\x9f]', s):
@@ -280,9 +304,7 @@ class SystemD:
             raise Exception('args empty')
         if not service.name:
             raise Exception('name empty')
-        if not service.config:
-            raise Exception('config empty')
-        if not service.config.name:
+        if not service.config or not service.config.name:
             raise Exception('config empty')
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
         # https://www.freedesktop.org/software/systemd/man/systemd.service.html
@@ -322,6 +344,8 @@ class SystemD:
         # https://www.freedesktop.org/software/systemd/man/systemd.time.html
         if service.type != 'periodic' and service.type != 'cron':
             return None
+        if not service.config or not service.config.name:
+            raise Exception('config empty')
         tpl = '# created by control.py\n'
         tpl += '# control.yaml=%s\n' % (service.config.path, )
         tpl += '\n'
@@ -329,12 +353,18 @@ class SystemD:
         tpl += 'Description=%s\n' % (service.config.name + '-' + service.name, )
         tpl += '\n'
         tpl += '[Timer]\n'
+        if service.interval is not None and service.type == 'periodic':
+            tpl += 'OnActiveSec=%s\n' % (service.first_interval or service.interval, )
+            tpl += 'OnUnitActiveSec=%s\n' % (service.interval, )
+        if service.cron is not None and service.type == 'cron':
+            tpl += 'OnCalendar=%s\n' % (service.cron, )
+            # Persistent=true
+        if service.random_delay is not None:
+            tpl += 'RandomizedDelaySec=%s\n' % (service.random_delay, )
         if service.systemd_timer:
             tpl += service.systemd_timer
             if not service.systemd_timer.endswith('\n'):
                 tpl += '\n'
-        # OnCalendar=weekly
-        # Persistent=true
         tpl += '\n'
         tpl += '[Install]\n'
         tpl += 'WantedBy=timers.target\n'
@@ -401,6 +431,7 @@ class SystemD:
                 self.file_delete(os.path.join(self.unit_path, file))
 
     def start(self, service):
+        print('start', service.name)
         try:
             self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
             time.sleep(1)
@@ -412,12 +443,15 @@ class SystemD:
                 pass
 
     def stop(self, service):
+        print('stop', service.name)
         self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.service'])
 
     def restart(self, service):
+        print('restart', service.name)
         self.run(['systemctl', 'restart', service.config.name + '-' + service.name + '.service'])
 
     def reload(self, service):
+        print('reload', service.name)
         self.run(['systemctl', 'reload', service.config.name + '-' + service.name + '.service'])
 
     def is_started(self, service):
@@ -430,6 +464,7 @@ class SystemD:
             raise e
 
     def enable(self, service):
+        print('enable', service.name)
         if service.type == 'daemon':
             self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
@@ -437,6 +472,7 @@ class SystemD:
             self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.timer'])
 
     def disable(self, service):
+        print('disable', service.name)
         if service.type == 'daemon':
             self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
