@@ -436,6 +436,8 @@ class SystemD:
                 self.file_delete(os.path.join(self.unit_path, file))
 
     def start(self, service):
+        if self.is_started(service):
+            return
         print('start', service.name)
         try:
             self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
@@ -448,6 +450,8 @@ class SystemD:
                 pass
 
     def stop(self, service):
+        if not self.is_started(service):
+            return
         print('stop', service.name)
         self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.service'])
 
@@ -469,6 +473,8 @@ class SystemD:
             raise e
 
     def enable(self, service):
+        if self.is_enabled(service):
+            return
         print('enable', service.name)
         if service.type == 'daemon':
             self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.service'])
@@ -477,6 +483,8 @@ class SystemD:
             self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.timer'])
 
     def disable(self, service):
+        if not self.is_enabled(service):
+            return
         print('disable', service.name)
         if service.type == 'daemon':
             self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.service'])
