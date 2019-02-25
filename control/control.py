@@ -113,6 +113,10 @@ class Service(Executable):
                     'first_interval': { 'type': 'string' },
                     'random_delay': { 'type': 'string' },
                     'cron': { 'type': 'string' },
+                    'max_cpu': { 'type': 'string' },
+                    'max_memory': { 'type': 'string' },
+                    'max_time': { 'type': 'string' },
+                    'nofile': { 'type': 'number' },
                 },
             },
         ],
@@ -128,6 +132,10 @@ class Service(Executable):
         self.first_interval = None
         self.random_delay = None
         self.cron = None
+        self.max_cpu = None
+        self.max_memory = None
+        self.max_time = None
+        self.nofile = None
         self.name = name
         self.config = config
 
@@ -149,6 +157,14 @@ class Service(Executable):
             res['random_delay'] = self.random_delay
         if self.cron:
             res['cron'] = self.cron
+        if self.max_cpu:
+            res['max_cpu'] = self.max_cpu
+        if self.max_memory:
+            res['max_memory'] = self.max_memory
+        if self.max_time:
+            res['max_time'] = self.max_time
+        if self.nofile:
+            res['nofile'] = self.nofile
         return res
 
     def __repr__(self):
@@ -165,6 +181,10 @@ class Service(Executable):
         self.first_interval = data.pop('first_interval', None)
         self.random_delay = data.pop('random_delay', None)
         self.cron = data.pop('cron', None)
+        self.max_cpu = data.pop('max_cpu', None)
+        self.max_memory = data.pop('max_memory', None)
+        self.max_time = data.pop('max_time', None)
+        self.nofile = data.pop('nofile', None)
 
 
 
@@ -250,11 +270,14 @@ class Config:
                 res += self.get_services(i)
             return res
 
+        if filter == 'all':
+            return self.services.values()
+
         if filter in self.services:
             return [self.services[filter]]
 
-        if filter == 'all':
-            return self.services.values()
+        if filter in self.groups:
+            return self.get_services(self.groups[filter])
 
         else:
             return []
@@ -329,14 +352,17 @@ class SystemD:
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
         tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(service.cwd or os.path.dirname(service.config.path)), )
-        # RuntimeMaxSec=5m
-        # MemoryMax=100M
-        # CPUQuota=10%
-        # LimitNOFILE=32768
-
         if service.env:
             for (k, v) in service.env.items():
                 tpl += 'Environment=%s=%s\n' % (k, v)
+        if service.max_cpu is not None:
+            tpl += 'CPUQuota=%s\n' % (service.max_cpu, )
+        if service.max_memory is not None:
+            tpl += 'MemoryMax=%s\n' % (service.max_memory, )
+        if service.max_time is not None:
+            tpl += 'RuntimeMaxSec=%s\n' % (service.max_time, )
+        if service.nofile is not None:
+            tpl += 'LimitNOFILE=%s\n' % (service.nofile, )
         if service.systemd:
             tpl += service.systemd
             if not service.systemd.endswith('\n'):
