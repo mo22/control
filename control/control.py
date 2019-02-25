@@ -228,8 +228,8 @@ class Config:
             service = Service(self, key)
             service.parse_dict(value.copy())
             self.services[key] = service
-        self.groups = data.pop('groups')
-        self.env = data.pop('env')
+        self.groups = data.pop('groups', {})
+        self.env = data.pop('env', {})
 
     @classmethod
     def load(self, path):
