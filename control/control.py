@@ -108,26 +108,12 @@ class Service(Executable):
                     'user': { 'type': 'string' },
                     'type': { 'values': ['daemon', 'periodic', 'cron'] },
                     'systemd': { 'type': 'string' },
+                    'systemd_timer': { 'type': 'string' },
+                    'interval': { 'type': 'string' },
+                    'first_interval': { 'type': 'string' },
+                    'random_delay': { 'type': 'string' },
+                    'cron': { 'type': 'string' },
                 },
-                'oneOf': [
-                    {
-                        'properties': {
-                            'type': { 'values': ['cron'] },
-                            'systemd_timer': { 'type': 'string' },
-                            'cron': { 'type': 'string' },
-                            'random_delay': { 'type': 'string' },
-                        },
-                    },
-                    {
-                        'properties': {
-                            'type': { 'values': ['periodic'] },
-                            'systemd_timer': { 'type': 'string' },
-                            'interval': { 'type': 'string' },
-                            'first_interval': { 'type': 'string' },
-                            'random_delay': { 'type': 'string' },
-                        },
-                    },
-                ],
             },
         ],
     }
@@ -193,14 +179,29 @@ class Config:
                 'type': 'object',
                 'additionalProperties': Service.schema,
             },
+            'env': {
+                'type': 'object',
+                'additionalProperties': {
+                    'type': 'string',
+                },
+            },
+            'groups': {
+                'type': 'object',
+                'additionalProperties': {
+                    'type': 'array',
+                    'itemType': 'string',
+                },
+            },
         },
     }
 
     def __init__(self):
-        # self.version = None
-        # self.name = None
-        # self.path = None
+        self.version = None
+        self.name = None
+        self.path = None
         self.services = {}
+        self.groups = {}
+        self.env = {}
 
     def to_dict(self):
         res = {}
@@ -210,6 +211,8 @@ class Config:
         res['services'] = {}
         for k, v in self.services.items():
             res['services'][k] = v.to_dict()
+        res['groups'] = self.groups
+        res['env'] = self.env
         return res
 
     def __repr__(self):
@@ -225,6 +228,8 @@ class Config:
             service = Service(self, key)
             service.parse_dict(value.copy())
             self.services[key] = service
+        self.groups = data.pop('groups')
+        self.env = data.pop('env')
 
     @classmethod
     def load(self, path):

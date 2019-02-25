@@ -2,6 +2,13 @@
 version: https://github.com/mo22/control
 name: example
 
+env:
+    TEST: blah
+
+groups:
+    test:
+        - testcron
+
 services:
 
     daemon:
