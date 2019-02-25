@@ -265,7 +265,7 @@ class SystemD:
 
     def file_write(self, path, content):
         try:
-            if self.read_file(path) == content:
+            if self.file_read(path) == content:
                 return
         except:
             pass
