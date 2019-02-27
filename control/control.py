@@ -698,51 +698,41 @@ class Commands:
 
 
 
+if True:
+    # global plugin test
+    config_old_from_dict = Config.from_dict
+
+    def config_new_from_dict(data, path):
+        data.pop('pluginports', None)
+        res = config_old_from_dict(data, path)
+        return res
+
+    Config.from_dict = config_new_from_dict
+
+
+
+if True:
+    # plugin test
+    old_from_dict = Service.from_dict
+
+    class NginxService:
+        pass
+
+    def new_from_dict(config, name, data):
+        if data.get('type', None) != 'nginx':
+            return old_from_dict(config, name, data)
+        data.pop('type')
+        res = NginxService()
+        res.listen = data.pop('listen', None)
+        res.root = data.pop('root', None)
+        return res
+
+    Service.from_dict = new_from_dict
+
+
+
 def main():
     import argparse
-
-    if True:
-        # global plugin test
-        config_old_from_dict = Config.from_dict
-
-        def config_new_from_dict(data, path):
-            data.pop('pluginports', None)
-            res = config_old_from_dict(data, path)
-            return res
-
-        Config.from_dict = config_new_from_dict
-
-    if True:
-        # plugin test
-        old_from_dict = Service.from_dict
-
-        class NginxService:
-            pass
-
-        def new_from_dict(config, name, data):
-            if data.get('type', None) != 'nginx':
-                return old_from_dict(config, name, data)
-            data.pop('type')
-            res = NginxService()
-            res.listen = data.pop('listen', None)
-            res.root = data.pop('root', None)
-            return res
-
-        Service.from_dict = new_from_dict
-
-        # Service.schema = {
-        #     'anyOf': [
-        #         {
-        #             'properties': {
-        #                 'type': { 'values': ['plugin' ] },
-        #             },
-        #         },
-        #         Service.schema,
-        #     ],
-        # }
-        # Config.schema['properties']['services']['additionalProperties'] = Service.schema
-
-        pass
 
     # type=int
     # choices=[0, 1, 2]
