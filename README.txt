@@ -1,6 +1,5 @@
 TODO
-
-[ ] use config.env / variable interpolation
+[ ] docs
 
 [ ] plugins
     nginx?

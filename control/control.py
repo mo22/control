@@ -187,6 +187,12 @@ class Service(Executable):
         self.nofile = data.pop('nofile', None)
         return data
 
+    @classmethod
+    def from_dict(self, config, name, data):
+        res = Service(config, name)
+        res.parse_dict(data)
+        return res
+
 
 
 class Config:
@@ -198,7 +204,7 @@ class Config:
             'version': { 'type': 'string', 'enum': [ 'https://github.com/mo22/control' ] },
             'services': {
                 'type': 'object',
-                'additionalProperties': Service.schema,
+                # 'additionalProperties': Service.schema, # validated in Service.from_dict
             },
             'env': {
                 'type': 'object',
@@ -269,8 +275,10 @@ class Config:
         self.name = data.pop('name')
         # res.path = os.path.realpath(path) if path else None
         for (key, value) in data.pop('services', {}).items():
-            service = Service(self, key)
-            tmp = service.parse_dict(value.copy())
+            tmp = value.copy()
+            service = Service.from_dict(self, key, tmp)
+            # service = Service(self, key)
+            # tmp = service.parse_dict(value.copy())
             if len(tmp.keys()):
                 print('WARNING: service %s has additional keys %r' % (key, list(tmp.keys())))
             self.services[key] = service
@@ -688,6 +696,23 @@ class Commands:
 
 def main():
     import argparse
+
+    if True:
+        # plugin test
+
+        # Service.schema = {
+        #     'anyOf': [
+        #         {
+        #             'properties': {
+        #                 'type': { 'values': ['plugin' ] },
+        #             },
+        #         },
+        #         Service.schema,
+        #     ],
+        # }
+        # Config.schema['properties']['services']['additionalProperties'] = Service.schema
+
+        pass
 
     # type=int
     # choices=[0, 1, 2]

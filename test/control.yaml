@@ -10,6 +10,8 @@ groups:
         - testcron
 
 services:
+    plugintest:
+        type: plugin
 
     daemon:
         shell: while true; do date; sleep 10; done
