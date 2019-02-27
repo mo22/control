@@ -287,13 +287,17 @@ class Config:
             print('WARNING: configuration has additional keys %r' % list(data.keys()), )
 
     @classmethod
+    def from_dict(self, data, path):
+        res = Config()
+        res.parse_dict(data)
+        res.path = os.path.realpath(path)
+        return res
+
+    @classmethod
     def load(self, path):
         with open(path, 'r') as fp:
             data = yaml.load(fp)
-        config = Config()
-        config.parse_dict(data)
-        config.path = os.path.realpath(path)
-        return config
+        return self.from_dict(data, path)
 
     def get_service(self, name):
         return self.services.get(name, None)
