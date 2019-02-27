@@ -185,6 +185,7 @@ class Service(Executable):
         self.max_memory = data.pop('max_memory', None)
         self.max_time = data.pop('max_time', None)
         self.nofile = data.pop('nofile', None)
+        return data
 
 
 
@@ -202,7 +203,11 @@ class Config:
             'env': {
                 'type': 'object',
                 'additionalProperties': {
-                    'type': 'string',
+                    'oneOf': [
+                        { 'type': 'string' },
+                        { 'type': 'number' },
+                        { 'type': 'boolean' },
+                    ],
                 },
             },
             'groups': {
@@ -241,15 +246,33 @@ class Config:
 
     def parse_dict(self, data):
         jsonschema.validate(data, self.schema)
+        for (k, v) in data.pop('env', {}).items():
+            self.env[k] = str(v)
+
+        def env_subst(data):
+            if isinstance(data, list):
+                return [env_subst(i) for i in data]
+            elif isinstance(data, dict):
+                return dict((k, env_subst(v)) for (k, v) in data.items())
+            elif isinstance(data, str):
+                # replace here
+                return data
+            else:
+                return data
+        data = env_subst(data)
+
         self.version = data.pop('version')
         self.name = data.pop('name')
         # res.path = os.path.realpath(path) if path else None
         for (key, value) in data.pop('services', {}).items():
             service = Service(self, key)
-            service.parse_dict(value.copy())
+            tmp = service.parse_dict(value.copy())
+            if len(tmp.keys()):
+                print('WARNING: service %s has additional keys %r' % (key, list(tmp.keys())))
             self.services[key] = service
         self.groups = data.pop('groups', {})
-        self.env = data.pop('env', {})
+        if len(data.keys()):
+            print('WARNING: configuration has additional keys %r' % list(data.keys()), )
 
     @classmethod
     def load(self, path):

@@ -3,7 +3,7 @@ version: https://github.com/mo22/control
 name: example
 
 env:
-    TEST: blah
+    CPUCOUNT: 2
 
 groups:
     test:
@@ -16,7 +16,7 @@ services:
         type: daemon
 
     cpustress:
-        run: stress -c 2
+        run: stress -c {CPUCOUNT}
         systemd: CPUQuota=10%
         # works!
 
