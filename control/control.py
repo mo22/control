@@ -699,6 +699,16 @@ def main():
 
     if True:
         # plugin test
+        # monkey patch Service.from_dict
+        old_from_dict = Service.from_dict
+
+        def new_from_dict(config, name, data):
+            if data.get('type', None) != 'plugin':
+                return old_from_dict(config, name, data)
+            res = Service(config, name)
+            return res
+
+        Service.from_dict = new_from_dict
 
         # Service.schema = {
         #     'anyOf': [
