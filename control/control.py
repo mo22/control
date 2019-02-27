@@ -255,7 +255,11 @@ class Config:
             elif isinstance(data, dict):
                 return dict((k, env_subst(v)) for (k, v) in data.items())
             elif isinstance(data, str):
-                # replace here
+                for i in re.findall(r'{[^}]+}', data):
+                    if i[1:-1] in self.env:
+                        data = data.replace(i, self.env[i[1:-1]])
+                    else:
+                        print('WARNING: unknown variable %s' % (i, ))
                 return data
             else:
                 return data
