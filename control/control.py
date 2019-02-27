@@ -716,7 +716,17 @@ if True:
     old_from_dict = Service.from_dict
 
     class NginxService:
-        pass
+        def __init__(self):
+            self.listen = None
+            self.root = None
+
+        def to_dict(self):
+            res = {}
+            if self.listen:
+                res['listen'] = self.listen
+            if self.root:
+                res['root'] = self.root
+            return res
 
     def new_from_dict(config, name, data):
         if data.get('type', None) != 'nginx':
