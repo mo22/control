@@ -296,7 +296,7 @@ class Config:
     @classmethod
     def load(self, path):
         with open(path, 'r') as fp:
-            data = yaml.load(fp)
+            data = yaml.load(fp, loader=yaml.SafeLoader)
         return self.from_dict(data, path)
 
     def get_service(self, name):
