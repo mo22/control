@@ -664,8 +664,8 @@ class Commands:
         if len(names) == 0:
             names = 'all'
         backend = SystemD()
-        for service in self.config.get_services(names):
-            print('{:20s} {:10s} {:10s}'.format(
+        for service in sorted(self.config.get_services(names), key=lambda i: i.name):
+            print('{:30s} {:10s} {:10s}'.format(
                 service.name,
                 'enabled' if backend.is_enabled(service) else 'disabled',
                 'running' if backend.is_started(service) else 'stopped'
