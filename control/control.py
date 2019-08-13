@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# type:ignore
 # pylama:ignore=E501,E303,E302,E305,E722,E201,E202,D100,D101,D102,D103,D105,D107,C901
 
 from __future__ import print_function
@@ -8,6 +9,7 @@ import subprocess
 import re
 import logging
 import yaml
+import json
 import jsonschema
 import shlex
 import time
@@ -676,6 +678,23 @@ class Commands:
                 except subprocess.CalledProcessError:
                     pass
 
+    def status_json(self, names):
+        if len(names) == 0:
+            names = 'all'
+        backend = SystemD()
+        for service in sorted(self.config.get_services(names), key=lambda i: i.name):
+            print('{:30s} {:10s} {:10s}'.format(
+                service.name,
+                'enabled' if backend.is_enabled(service) else 'disabled',
+                'running' if backend.is_started(service) else 'stopped'
+            ))
+            if True:
+                try:
+                    backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+                except subprocess.CalledProcessError:
+                    pass
+        print(json.dumps({}))
+
     def log(self, names, follow=False):
         backend = SystemD()
         if follow:
@@ -711,7 +730,7 @@ if True:
 
 
 
-if True:
+if False:
     # plugin test
     old_from_dict = Service.from_dict
 
@@ -827,6 +846,11 @@ def main():
         parser.set_defaults(func=lambda args: commands.status(names=args.name, full=args.full))
 
     if True:
+        parser = subparsers.add_parser('json', help='list services and status as json')
+        parser.add_argument('name', nargs='*', help='name of service')
+        parser.set_defaults(func=lambda args: commands.status_json(names=args.name))
+
+    if True:
         parser = subparsers.add_parser('log', help='show logs')
         parser.add_argument('name', nargs='*', help='name of service')
         parser.add_argument('--follow', '-f', action='store_true', help='follow')
@@ -846,7 +870,6 @@ def main():
     commands = Commands(config)
 
     args.func(args)
-
 
 if __name__ == '__main__':
     main()
