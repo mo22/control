@@ -682,18 +682,21 @@ class Commands:
         if len(names) == 0:
             names = 'all'
         backend = SystemD()
+        res_services = {}
         for service in sorted(self.config.get_services(names), key=lambda i: i.name):
-            print('{:30s} {:10s} {:10s}'.format(
-                service.name,
-                'enabled' if backend.is_enabled(service) else 'disabled',
-                'running' if backend.is_started(service) else 'stopped'
-            ))
-            if True:
-                try:
-                    backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
-                except subprocess.CalledProcessError:
-                    pass
-        print(json.dumps({}))
+            res_service = {
+                'name': service.name,
+                'enabled': backend.is_enabled(service),
+                'started': backend.is_started(service),
+            }
+            res_services[service.name] = res_service
+            # systemctl --no-pager --no-ask-password show coin-server
+            # if True:
+            #     try:
+            #         backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+            #     except subprocess.CalledProcessError:
+            #         pass
+        print(json.dumps(res_services))
 
     def log(self, names, follow=False):
         backend = SystemD()
