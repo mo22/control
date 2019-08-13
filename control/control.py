@@ -690,10 +690,9 @@ class Commands:
                 'started': backend.is_started(service),
             }
             res_services[service.name] = res_service
-            # systemctl --no-pager --no-ask-password show coin-server
             # if True:
             #     try:
-            #         backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+            #         backend.run(['systemctl', '--no-pager', '--no-ask-password', 'show', service.config.name + '-' + service.name])
             #     except subprocess.CalledProcessError:
             #         pass
         print(json.dumps(res_services))
