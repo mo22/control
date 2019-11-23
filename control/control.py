@@ -21,7 +21,7 @@ class Executable:
         'type': 'object',
         'properties': {
             'cmd': { 'type': 'string' },
-            'env': { 'type': 'object' },
+            'env': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
             'args': { 'type': 'array' },
             'run': { 'type': 'string' },
             'shell': { 'type': 'string' },
@@ -593,9 +593,6 @@ class Commands:
             return
         if not service.args:
             return
-        print('args', repr(service.args))
-        print('cwd', repr(service.cwd))
-        print('env', repr(service.env))
         proc = subprocess.Popen(
             service.args,
             cwd=service.cwd,
