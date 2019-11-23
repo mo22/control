@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-# type:ignore
-# pylama:ignore=E501,E303,E302,E305,E722,E201,E202,D100,D101,D102,D103,D105,D107,C901
-
+# type: ignore
+# flake8: noqa
 from __future__ import print_function
 import os
 import sys
@@ -594,6 +593,9 @@ class Commands:
             return
         if not service.args:
             return
+        print('args', repr(service.args))
+        print('cwd', repr(service.cwd))
+        print('env', repr(service.env))
         proc = subprocess.Popen(
             service.args,
             cwd=service.cwd,
