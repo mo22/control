@@ -388,6 +388,9 @@ class SystemD:
         tpl += '[Service]\n'
         tpl += 'Type=simple\n'
         tpl += 'Restart=on-failure\n'  # config?
+        tpl += 'RestartSec=10\n'  # config?
+        tpl += 'StartLimitIntervalSec=300\n'  # config?
+        tpl += 'StartLimitIntervalSec=0\n'  # config?
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
