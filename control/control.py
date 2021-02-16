@@ -379,6 +379,7 @@ class SystemD:
         if not service.config or not service.config.name:
             raise Exception('config empty')
         version = self.systemd_version()
+        print('version', version)
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
         # https://www.freedesktop.org/software/systemd/man/systemd.service.html
         tpl = '# created by control.py\n'
@@ -394,8 +395,10 @@ class SystemD:
         tpl += 'Type=simple\n'
         tpl += 'Restart=on-failure\n'  # config?
         tpl += 'RestartSec=10\n'  # config?
-        if version > 240:
+        if version > 244:
             tpl += 'StartLimitIntervalSec=0\n'  # config?
+        else:
+            tpl += 'StartLimitInterval=0\n'  # config?
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
