@@ -369,8 +369,7 @@ class SystemD:
 
     def systemd_version(self):
         tmp = subprocess.check_output(['systemd', '--version'])
-        print('tmp', tmp)
-        return int(tmp.stdout.split('\n')[0].split(' ')[1])
+        return int(tmp.decode('utf-8').split('\n')[0].split(' ')[1])
 
     def service_template(self, service):
         if not service.args:
