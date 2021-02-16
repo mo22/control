@@ -379,7 +379,6 @@ class SystemD:
         if not service.config or not service.config.name:
             raise Exception('config empty')
         version = self.systemd_version()
-        print('version', version)
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
         # https://www.freedesktop.org/software/systemd/man/systemd.service.html
         tpl = '# created by control.py\n'
