@@ -370,7 +370,7 @@ class SystemD:
     def systemd_version(self):
         tmp = subprocess.check_output(['systemd', '--version'])
         print('tmp', tmp)
-        return 240
+        return int(tmp.stdout.split('\n')[0].split(' ')[1])
 
     def service_template(self, service):
         if not service.args:
@@ -395,7 +395,8 @@ class SystemD:
         tpl += 'Type=simple\n'
         tpl += 'Restart=on-failure\n'  # config?
         tpl += 'RestartSec=10\n'  # config?
-        tpl += 'StartLimitIntervalSec=0\n'  # config?
+        if version > 240:
+            tpl += 'StartLimitIntervalSec=0\n'  # config?
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
