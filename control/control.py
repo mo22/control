@@ -367,6 +367,11 @@ class SystemD:
         # repr pretty much matches systemd escaping.. but verify this
         return repr(s)
 
+    def systemd_version(self):
+        tmp = subprocess.check_output(['systemd', '--version'])
+        print('tmp', tmp)
+        return 240
+
     def service_template(self, service):
         if not service.args:
             raise Exception('args empty')
@@ -374,6 +379,7 @@ class SystemD:
             raise Exception('name empty')
         if not service.config or not service.config.name:
             raise Exception('config empty')
+        version = self.systemd_version()
         # https://www.freedesktop.org/software/systemd/man/systemd.unit.html
         # https://www.freedesktop.org/software/systemd/man/systemd.service.html
         tpl = '# created by control.py\n'
