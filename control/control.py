@@ -2,16 +2,18 @@
 # type: ignore
 # flake8: noqa
 from __future__ import print_function
-import os
-import sys
-import subprocess
-import re
-import logging
-import yaml
+
 import json
-import jsonschema
+import logging
+import os
+import re
 import shlex
+import subprocess
+import sys
 import time
+
+import jsonschema
+import yaml
 
 
 class Executable:
@@ -20,17 +22,17 @@ class Executable:
     schema = {
         'type': 'object',
         'properties': {
-            'cmd': { 'type': 'string' },
-            'env': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-            'args': { 'type': 'array' },
-            'run': { 'type': 'string' },
-            'shell': { 'type': 'string' },
-            'cwd': { 'type': 'string' },
+            'cmd': {'type': 'string'},
+            'env': {'type': 'object', 'additionalProperties': {'type': 'string'}},
+            'args': {'type': 'array'},
+            'run': {'type': 'string'},
+            'shell': {'type': 'string'},
+            'cwd': {'type': 'string'},
         },
         'oneOf': [
-            { 'required': ['run'] },
-            { 'required': ['cmd'] },
-            { 'required': ['shell'] },
+            {'required': ['run']},
+            {'required': ['cmd']},
+            {'required': ['shell']},
         ],
     }
 
@@ -60,11 +62,11 @@ class Executable:
 
         if 'shell' in data:
             assert self.args is None
-            self.args = [ '/bin/sh', '-c', data.pop('shell') ]
+            self.args = ['/bin/sh', '-c', data.pop('shell')]
 
         if 'cmd' in data:
             assert self.args is None
-            self.args = [ data.pop('cmd') ] + data.pop('args', [])
+            self.args = [data.pop('cmd')] + data.pop('args', [])
 
         if 'cwd' in data:
             self.cwd = os.path.realpath(data.pop('cwd'))
@@ -94,9 +96,10 @@ class Executable:
         self.args[0] = resolve(self.args[0])
 
         # @TODO: really?
-        assert os.path.isfile(resolve(self.args[0])), 'does not exist: {}'.format(resolve(self.args[0]))
-        assert os.access(resolve(self.args[0]), os.X_OK), 'not executable: {}'.format(resolve(self.args[0]))
-
+        assert os.path.isfile(resolve(self.args[0])), 'does not exist: {}'.format(
+            resolve(self.args[0]))
+        assert os.access(resolve(self.args[0]), os.X_OK), 'not executable: {}'.format(
+            resolve(self.args[0]))
 
 
 class Service(Executable):
@@ -106,18 +109,18 @@ class Service(Executable):
             {
                 'type': 'object',
                 'properties': {
-                    'user': { 'type': 'string' },
-                    'type': { 'values': ['daemon', 'periodic', 'cron'] },
-                    'systemd': { 'type': 'string' },
-                    'systemd_timer': { 'type': 'string' },
-                    'interval': { 'type': 'string' },
-                    'first_interval': { 'type': 'string' },
-                    'random_delay': { 'type': 'string' },
-                    'cron': { 'type': 'string' },
-                    'max_cpu': { 'type': 'string' },
-                    'max_memory': { 'type': 'string' },
-                    'max_time': { 'type': 'string' },
-                    'nofile': { 'type': 'number' },
+                    'user': {'type': 'string'},
+                    'type': {'values': ['daemon', 'periodic', 'cron']},
+                    'systemd': {'type': 'string'},
+                    'systemd_timer': {'type': 'string'},
+                    'interval': {'type': 'string'},
+                    'first_interval': {'type': 'string'},
+                    'random_delay': {'type': 'string'},
+                    'cron': {'type': 'string'},
+                    'max_cpu': {'type': 'string'},
+                    'max_memory': {'type': 'string'},
+                    'max_time': {'type': 'string'},
+                    'nofile': {'type': 'number'},
                 },
             },
         ],
@@ -195,14 +198,13 @@ class Service(Executable):
         return res
 
 
-
 class Config:
     schema = {
         'type': 'object',
         'required': ['name', 'version'],
         'properties': {
-            'name': { 'type': 'string' },
-            'version': { 'type': 'string', 'enum': [ 'https://github.com/mo22/control' ] },
+            'name': {'type': 'string'},
+            'version': {'type': 'string', 'enum': ['https://github.com/mo22/control']},
             'services': {
                 'type': 'object',
                 # 'additionalProperties': Service.schema, # validated in Service.from_dict
@@ -211,9 +213,9 @@ class Config:
                 'type': 'object',
                 'additionalProperties': {
                     'oneOf': [
-                        { 'type': 'string' },
-                        { 'type': 'number' },
-                        { 'type': 'boolean' },
+                        {'type': 'string'},
+                        {'type': 'number'},
+                        {'type': 'boolean'},
                     ],
                 },
             },
@@ -281,11 +283,13 @@ class Config:
             # service = Service(self, key)
             # tmp = service.parse_dict(value.copy())
             if len(tmp.keys()):
-                print('WARNING: service %s has additional keys %r' % (key, list(tmp.keys())))
+                print('WARNING: service %s has additional keys %r' %
+                      (key, list(tmp.keys())))
             self.services[key] = service
         self.groups = data.pop('groups', {})
         if len(data.keys()):
-            print('WARNING: configuration has additional keys %r' % list(data.keys()), )
+            print('WARNING: configuration has additional keys %r' %
+                  list(data.keys()), )
 
     @classmethod
     def from_dict(self, data, path):
@@ -337,7 +341,8 @@ class SystemD:
             with open(path, 'w') as fp:
                 fp.write(content)
         else:
-            proc = subprocess.Popen(['sudo', '-n', 'tee', path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+            proc = subprocess.Popen(
+                ['sudo', '-n', 'tee', path], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
             proc.communicate(content.encode('utf-8'))
             proc.wait()
 
@@ -386,22 +391,30 @@ class SystemD:
         tpl += '\n'
 
         tpl += '[Unit]\n'
-        tpl += 'Description=%s\n' % (service.config.name + '-' + service.name, )
+        tpl += 'Description=%s\n' % (service.config.name +
+                                     '-' + service.name, )
         tpl += 'After=syslog.target network.target\n'
         tpl += '\n'
 
         tpl += '[Service]\n'
         tpl += 'Type=simple\n'
-        tpl += 'Restart=on-failure\n'  # config?
-        tpl += 'RestartSec=10\n'  # config?
+        # config?
+        if service.type == 'daemon':
+            tpl += 'Restart=on-failure\n'
+            tpl += 'RestartSec=10\n'
+        else:
+            tpl += 'Restart=never\n'
         if version > 244:
             tpl += 'StartLimitIntervalSec=0\n'  # config?
         else:
             tpl += 'StartLimitInterval=0\n'  # config?
-        tpl += 'SyslogIdentifier=%s\n' % (service.config.name + '-' + service.name, )
+        tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
+                                          '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
-        tpl += 'ExecStart=%s\n' % (' '.join([ self.quote(i) for i in service.args ]), )
-        tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(service.cwd or os.path.dirname(service.config.path)), )
+        tpl += 'ExecStart=%s\n' % (' '.join([self.quote(i)
+                                             for i in service.args]), )
+        tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(
+            service.cwd or os.path.dirname(service.config.path)), )
         if service.env:
             for (k, v) in service.env.items():
                 tpl += 'Environment=%s=%s\n' % (k, v)
@@ -436,11 +449,13 @@ class SystemD:
         tpl += '# control.yaml=%s\n' % (service.config.path, )
         tpl += '\n'
         tpl += '[Unit]\n'
-        tpl += 'Description=%s\n' % (service.config.name + '-' + service.name, )
+        tpl += 'Description=%s\n' % (service.config.name +
+                                     '-' + service.name, )
         tpl += '\n'
         tpl += '[Timer]\n'
         if service.interval is not None and service.type == 'periodic':
-            tpl += 'OnActiveSec=%s\n' % (service.first_interval or service.interval, )
+            tpl += 'OnActiveSec=%s\n' % (
+                service.first_interval or service.interval, )
             tpl += 'OnUnitActiveSec=%s\n' % (service.interval, )
         if service.cron is not None and service.type == 'cron':
             tpl += 'OnCalendar=%s\n' % (service.cron, )
@@ -459,12 +474,14 @@ class SystemD:
     def install(self, service):
         tpl = self.service_template(service)
         if tpl:
-            target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
+            target = os.path.join(
+                self.unit_path, service.config.name + '-' + service.name + '.service')
             self.file_write(target, tpl)
 
         tpl = self.timer_template(service)
         if tpl:
-            target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.timer')
+            target = os.path.join(
+                self.unit_path, service.config.name + '-' + service.name + '.timer')
             self.file_write(target, tpl)
 
         self.run(['systemctl', 'daemon-reload'])
@@ -479,16 +496,19 @@ class SystemD:
             self.disable(service)
         except:
             pass
-        target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.service')
+        target = os.path.join(
+            self.unit_path, service.config.name + '-' + service.name + '.service')
         self.file_delete(target)
-        target = os.path.join(self.unit_path, service.config.name + '-' + service.name + '.timer')
+        target = os.path.join(
+            self.unit_path, service.config.name + '-' + service.name + '.timer')
         self.file_delete(target)
 
     def uninstall_all(self, config):
         for file in os.listdir(self.unit_path):
             if file.endswith('.timer'):
                 try:
-                    self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
+                    self.file_read(os.path.join(self.unit_path, file)).split(
+                        '\n').index('# control.yaml=' + config.path)
                 except:
                     continue
                 try:
@@ -503,7 +523,8 @@ class SystemD:
         for file in os.listdir(self.unit_path):
             if file.endswith('.service'):
                 try:
-                    self.file_read(os.path.join(self.unit_path, file)).split('\n').index('# control.yaml=' + config.path)
+                    self.file_read(os.path.join(self.unit_path, file)).split(
+                        '\n').index('# control.yaml=' + config.path)
                 except:
                     continue
                 try:
@@ -521,12 +542,15 @@ class SystemD:
             return
         print('start', service.name)
         try:
-            self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.service'])
+            self.run(['systemctl', 'start', service.config.name +
+                      '-' + service.name + '.service'])
             time.sleep(1)
-            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name + '.service'], silent=True)
+            self.run(['systemctl', 'is-active', service.config.name +
+                      '-' + service.name + '.service'], silent=True)
         except subprocess.CalledProcessError:
             try:
-                self.run(['systemctl', 'status', service.config.name + '-' + service.name + '.service'])
+                self.run(['systemctl', 'status', service.config.name +
+                          '-' + service.name + '.service'])
             except subprocess.CalledProcessError:
                 pass
 
@@ -534,19 +558,23 @@ class SystemD:
         if not self.is_started(service):
             return
         print('stop', service.name)
-        self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.service'])
+        self.run(['systemctl', 'stop', service.config.name +
+                  '-' + service.name + '.service'])
 
     def restart(self, service):
         print('restart', service.name)
-        self.run(['systemctl', 'restart', service.config.name + '-' + service.name + '.service'])
+        self.run(['systemctl', 'restart', service.config.name +
+                  '-' + service.name + '.service'])
 
     def reload(self, service):
         print('reload', service.name)
-        self.run(['systemctl', 'reload', service.config.name + '-' + service.name + '.service'])
+        self.run(['systemctl', 'reload', service.config.name +
+                  '-' + service.name + '.service'])
 
     def is_started(self, service):
         try:
-            self.run(['systemctl', 'is-active', service.config.name + '-' + service.name + '.service'], silent=True)
+            self.run(['systemctl', 'is-active', service.config.name +
+                      '-' + service.name + '.service'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
             if e.returncode == 3:
@@ -558,33 +586,40 @@ class SystemD:
             return
         print('enable', service.name)
         if service.type == 'daemon':
-            self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.service'])
+            self.run(['systemctl', 'enable', service.config.name +
+                      '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
-            self.run(['systemctl', 'enable', service.config.name + '-' + service.name + '.timer'])
-            self.run(['systemctl', 'start', service.config.name + '-' + service.name + '.timer'])
+            self.run(['systemctl', 'enable', service.config.name +
+                      '-' + service.name + '.timer'])
+            self.run(['systemctl', 'start', service.config.name +
+                      '-' + service.name + '.timer'])
 
     def disable(self, service):
         if not self.is_enabled(service):
             return
         print('disable', service.name)
         if service.type == 'daemon':
-            self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.service'])
+            self.run(['systemctl', 'disable', service.config.name +
+                      '-' + service.name + '.service'])
         elif service.type == 'periodic' or service.type == 'cron':
-            self.run(['systemctl', 'stop', service.config.name + '-' + service.name + '.timer'])
-            self.run(['systemctl', 'disable', service.config.name + '-' + service.name + '.timer'])
+            self.run(['systemctl', 'stop', service.config.name +
+                      '-' + service.name + '.timer'])
+            self.run(['systemctl', 'disable', service.config.name +
+                      '-' + service.name + '.timer'])
 
     def is_enabled(self, service):
         try:
             if service.type == 'daemon':
-                self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name + '.service'], silent=True)
+                self.run(['systemctl', 'is-enabled', service.config.name +
+                          '-' + service.name + '.service'], silent=True)
             elif service.type == 'periodic' or service.type == 'cron':
-                self.run(['systemctl', 'is-enabled', service.config.name + '-' + service.name + '.timer'], silent=True)
+                self.run(['systemctl', 'is-enabled', service.config.name +
+                          '-' + service.name + '.timer'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
             if e.returncode == 1:
                 return False
             raise e
-
 
 
 class Commands:
@@ -683,7 +718,8 @@ class Commands:
             ))
             if full:
                 try:
-                    backend.run(['systemctl', '--no-pager', '--no-ask-password', 'status', service.config.name + '-' + service.name])
+                    backend.run(['systemctl', '--no-pager', '--no-ask-password',
+                                 'status', service.config.name + '-' + service.name])
                 except subprocess.CalledProcessError:
                     pass
 
@@ -711,7 +747,8 @@ class Commands:
         if follow:
             procs = []
             for service in self.config.get_services(names):
-                args = ['journalctl', '--no-pager', '-f', '-u', service.config.name + '-' + service.name]
+                args = ['journalctl', '--no-pager', '-f', '-u',
+                        service.config.name + '-' + service.name]
                 if os.getuid() != 0:
                     args = ['sudo', '-n'] + args
                 procs.append(subprocess.Popen(args))
@@ -724,8 +761,8 @@ class Commands:
 
         else:
             for service in self.config.get_services(names):
-                backend.run(['journalctl', '--no-pager', '-u', service.config.name + '-' + service.name])
-
+                backend.run(['journalctl', '--no-pager', '-u',
+                             service.config.name + '-' + service.name])
 
 
 if True:
@@ -738,7 +775,6 @@ if True:
         return res
 
     Config.from_dict = config_new_from_dict
-
 
 
 if False:
@@ -770,7 +806,6 @@ if False:
     Service.from_dict = new_from_dict
 
 
-
 def main():
     import argparse
 
@@ -780,15 +815,18 @@ def main():
     # nargs='?',
 
     mainparser = argparse.ArgumentParser()
-    mainparser.add_argument('--verbose', action='store_true', default=False, help='verbose mode')
-    mainparser.add_argument('--config', default='control.yaml', help='path to config file')
+    mainparser.add_argument('--verbose', action='store_true',
+                            default=False, help='verbose mode')
+    mainparser.add_argument(
+        '--config', default='control.yaml', help='path to config file')
     subparsers = mainparser.add_subparsers()
 
     config = None
     commands = None
 
     if True:
-        parser = subparsers.add_parser('dump', help='dump parsed configuration')
+        parser = subparsers.add_parser(
+            'dump', help='dump parsed configuration')
         parser.set_defaults(func=lambda args: commands.dump())
 
     if True:
@@ -803,12 +841,14 @@ def main():
     if True:
         parser = subparsers.add_parser('install', help='install service')
         parser.add_argument('name', nargs='+', help='name of service')
-        parser.set_defaults(func=lambda args: commands.install(names=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.install(names=args.name))
 
     if True:
         parser = subparsers.add_parser('uninstall', help='uninstall service')
         parser.add_argument('name', nargs='*', help='name of service')
-        parser.set_defaults(func=lambda args: commands.uninstall(names=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.uninstall(names=args.name))
 
     if True:
         parser = subparsers.add_parser('start', help='start service')
@@ -823,7 +863,8 @@ def main():
     if True:
         parser = subparsers.add_parser('restart', help='restart service')
         parser.add_argument('name', nargs='+', help='name of service')
-        parser.set_defaults(func=lambda args: commands.restart(names=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.restart(names=args.name))
 
     if True:
         parser = subparsers.add_parser('reload', help='reload service')
@@ -831,9 +872,11 @@ def main():
         parser.set_defaults(func=lambda args: commands.reload(names=args.name))
 
     if True:
-        parser = subparsers.add_parser('is-started', help='check if service is started')
+        parser = subparsers.add_parser(
+            'is-started', help='check if service is started')
         parser.add_argument('name', help='name of service')
-        parser.set_defaults(func=lambda args: commands.is_started(name=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.is_started(name=args.name))
 
     if True:
         parser = subparsers.add_parser('enable', help='enable service')
@@ -843,29 +886,39 @@ def main():
     if True:
         parser = subparsers.add_parser('disable', help='disable service')
         parser.add_argument('name', nargs='+', help='name of service')
-        parser.set_defaults(func=lambda args: commands.disable(names=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.disable(names=args.name))
 
     if True:
-        parser = subparsers.add_parser('is-enabled', help='check if service is enabled')
+        parser = subparsers.add_parser(
+            'is-enabled', help='check if service is enabled')
         parser.add_argument('name', help='name of service')
-        parser.set_defaults(func=lambda args: commands.is_enabled(name=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.is_enabled(name=args.name))
 
     if True:
-        parser = subparsers.add_parser('status', help='list services and status')
+        parser = subparsers.add_parser(
+            'status', help='list services and status')
         parser.add_argument('name', nargs='*', help='name of service')
-        parser.add_argument('--full', '-f', action='store_true', help='full status')
-        parser.set_defaults(func=lambda args: commands.status(names=args.name, full=args.full))
+        parser.add_argument(
+            '--full', '-f', action='store_true', help='full status')
+        parser.set_defaults(func=lambda args: commands.status(
+            names=args.name, full=args.full))
 
     if True:
-        parser = subparsers.add_parser('json', help='list services and status as json')
+        parser = subparsers.add_parser(
+            'json', help='list services and status as json')
         parser.add_argument('name', nargs='*', help='name of service')
-        parser.set_defaults(func=lambda args: commands.status_json(names=args.name))
+        parser.set_defaults(
+            func=lambda args: commands.status_json(names=args.name))
 
     if True:
         parser = subparsers.add_parser('log', help='show logs')
         parser.add_argument('name', nargs='*', help='name of service')
-        parser.add_argument('--follow', '-f', action='store_true', help='follow')
-        parser.set_defaults(func=lambda args: commands.log(names=args.name, follow=args.follow))
+        parser.add_argument(
+            '--follow', '-f', action='store_true', help='follow')
+        parser.set_defaults(func=lambda args: commands.log(
+            names=args.name, follow=args.follow))
 
     args = mainparser.parse_args()
     if 'func' not in args:
@@ -881,6 +934,7 @@ def main():
     commands = Commands(config)
 
     args.func(args)
+
 
 if __name__ == '__main__':
     main()
