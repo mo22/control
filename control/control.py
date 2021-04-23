@@ -394,6 +394,10 @@ class SystemD:
         tpl += 'Description=%s\n' % (service.config.name +
                                      '-' + service.name, )
         tpl += 'After=syslog.target network.target\n'
+        if version > 244:
+            tpl += 'StartLimitIntervalSec=0\n'  # config?
+        else:
+            tpl += 'StartLimitInterval=0\n'  # config?
         tpl += '\n'
 
         tpl += '[Service]\n'
@@ -403,11 +407,7 @@ class SystemD:
             tpl += 'Restart=on-failure\n'
             tpl += 'RestartSec=10\n'
         else:
-            tpl += 'Restart=never\n'
-        if version > 244:
-            tpl += 'StartLimitIntervalSec=0\n'  # config?
-        else:
-            tpl += 'StartLimitInterval=0\n'  # config?
+            tpl += 'Restart=no\n'
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
                                           '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
