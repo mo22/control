@@ -458,8 +458,7 @@ class SystemD:
                 service.first_interval or service.interval, )
             tpl += 'OnUnitActiveSec=%s\n' % (service.interval, )
         if service.cron is not None and service.type == 'cron':
-            print('check cron!', service.cron)
-            subprocess.check_call(['systemd-analyze', 'calendar', service.cron])
+            subprocess.check_output(['systemd-analyze', 'calendar', service.cron])
             tpl += 'OnCalendar=%s\n' % (service.cron, )
             # Persistent=true
         if service.random_delay is not None:
