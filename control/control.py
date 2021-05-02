@@ -351,6 +351,8 @@ class SystemD:
             return fp.read()
 
     def file_delete(self, path):
+        if not os.path.exists(path):
+            return
         if os.geteuid() == 0:
             os.unlink(path)
         else:
