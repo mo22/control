@@ -413,7 +413,7 @@ class SystemD:
         tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
                                           '-' + service.name, )
         tpl += 'User=%s\n' % (service.user or 'root', )
-        tpl += 'ExecStart=%s\n' % (' '.join([self.quote(i)
+        tpl += 'ExecStart=%s\n' % (' '.join([shlex.quote(i)
                                              for i in service.args]), )
         tpl += 'WorkingDirectory=%s\n' % (os.path.realpath(
             service.cwd or os.path.dirname(service.config.path)), )
