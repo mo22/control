@@ -121,7 +121,7 @@ class Service(Executable):
                     'max_memory': {'type': 'string'},
                     'max_time': {'type': 'string'},
                     'nofile': {'type': 'number'},
-                    'disable_syslog': {'type': 'boolean'},
+                    'syslog': {'type': 'string'},
                 },
             },
         ],
@@ -141,7 +141,7 @@ class Service(Executable):
         self.max_memory = None
         self.max_time = None
         self.nofile = None
-        self.disable_syslog = False
+        self.syslog = False
         self.name = name
         self.config = config
 
@@ -171,8 +171,8 @@ class Service(Executable):
             res['max_time'] = self.max_time
         if self.nofile:
             res['nofile'] = self.nofile
-        if self.disable_syslog:
-            res['disable_syslog'] = self.disable_syslog
+        if self.syslog:
+            res['syslog'] = self.syslog
         return res
 
     def __repr__(self):
@@ -193,7 +193,7 @@ class Service(Executable):
         self.max_memory = data.pop('max_memory', None)
         self.max_time = data.pop('max_time', None)
         self.nofile = data.pop('nofile', None)
-        self.disable_syslog = data.pop('disable_syslog', None)
+        self.syslog = data.pop('syslog', None)
         return data
 
     @classmethod
@@ -417,10 +417,8 @@ class SystemD:
             tpl += 'Restart=no\n'
         tpl += 'StandardOutput=journal\n'
         tpl += 'StandardError=journal\n'
-        if service.disable_syslog:
-            tpl += 'SyslogIdentifier=control-discard\n'
-            # @TODO: /etc/rsyslog.d/10-control-discard.conf
-            # :syslogtag,isequal,"control-discard:" stop
+        if service.syslog:
+            tpl += 'SyslogIdentifier=%s\n' % (service.syslog, )
         else:
             tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
                                             '-' + service.name, )
