@@ -415,12 +415,15 @@ class SystemD:
             tpl += 'RestartSec=10\n'
         else:
             tpl += 'Restart=no\n'
+        tpl += 'StandardOutput=journal\n'
+        tpl += 'StandardError=journal\n'
         if service.enable_syslog:
             tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
                                             '-' + service.name, )
         else:
-            tpl += 'StandardOutput=journal\n'
-            tpl += 'StandardError=journal\n'
+            tpl += 'SyslogIdentifier=control-discard\n'
+            # @TODO: /etc/rsyslog.d/10-control-discard.conf
+            # :syslogtag,isequal,"control-discard:" stop
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([shlex.quote(i)
                                              for i in service.args]), )
