@@ -121,6 +121,7 @@ class Service(Executable):
                     'max_memory': {'type': 'string'},
                     'max_time': {'type': 'string'},
                     'nofile': {'type': 'number'},
+                    'enable_syslog': {'type': 'boolean'},
                 },
             },
         ],
@@ -140,6 +141,7 @@ class Service(Executable):
         self.max_memory = None
         self.max_time = None
         self.nofile = None
+        self.enable_syslog = False
         self.name = name
         self.config = config
 
@@ -169,6 +171,8 @@ class Service(Executable):
             res['max_time'] = self.max_time
         if self.nofile:
             res['nofile'] = self.nofile
+        if self.enable_syslog:
+            res['enable_syslog'] = self.enable_syslog
         return res
 
     def __repr__(self):
@@ -189,6 +193,7 @@ class Service(Executable):
         self.max_memory = data.pop('max_memory', None)
         self.max_time = data.pop('max_time', None)
         self.nofile = data.pop('nofile', None)
+        self.enable_syslog = data.pop('enable_syslog', None)
         return data
 
     @classmethod
@@ -410,8 +415,12 @@ class SystemD:
             tpl += 'RestartSec=10\n'
         else:
             tpl += 'Restart=no\n'
-        tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
-                                          '-' + service.name, )
+        if service.enable_syslog:
+            tpl += 'SyslogIdentifier=%s\n' % (service.config.name +
+                                            '-' + service.name, )
+        else:
+            tpl += 'StandardOutput=journal\n'
+            tpl += 'StandardError=journal\n'
         tpl += 'User=%s\n' % (service.user or 'root', )
         tpl += 'ExecStart=%s\n' % (' '.join([shlex.quote(i)
                                              for i in service.args]), )
