@@ -116,7 +116,10 @@ class Service(Executable):
                     'interval': {'type': 'string'},
                     'first_interval': {'type': 'string'},
                     'random_delay': {'type': 'string'},
-                    'cron': {'type': 'string'},
+                    'cron': {'oneOf':[
+                        {'type': 'string'},
+                        {'type': 'array', 'items': {'type': 'string'}},
+                    ]},
                     'max_cpu': {'type': 'string'},
                     'max_memory': {'type': 'string'},
                     'max_time': {'type': 'string'},
@@ -471,7 +474,9 @@ class SystemD:
             tpl += 'OnUnitActiveSec=%s\n' % (service.interval, )
         if service.cron is not None and service.type == 'cron':
             subprocess.check_output(['systemd-analyze', 'calendar', service.cron])
-            tpl += 'OnCalendar=%s\n' % (service.cron, )
+            crons = service.cron if isinstance(service.cron, list) else [service.cron]
+            for cron in crons:
+                tpl += 'OnCalendar=%s\n' % (cron, )
             # Persistent=true
         if service.random_delay is not None:
             tpl += 'RandomizedDelaySec=%s\n' % (service.random_delay, )
