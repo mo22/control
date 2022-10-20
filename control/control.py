@@ -475,7 +475,7 @@ class SystemD:
         if service.cron is not None and service.type == 'cron':
             crons = service.cron if isinstance(service.cron, list) else [service.cron]
             for cron in crons:
-                subprocess.check_output(['systemd-analyze', 'calendar', service.cron])
+                subprocess.check_output(['systemd-analyze', 'calendar', cron])
                 tpl += 'OnCalendar=%s\n' % (cron, )
             # Persistent=true
         if service.random_delay is not None:
