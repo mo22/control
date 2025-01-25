@@ -635,7 +635,7 @@ class SystemD:
                           '-' + service.name + '.timer'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
-            if e.returncode == 1:
+            if e.returncode == 1 or e.returncode == 4:
                 return False
             raise e
 
