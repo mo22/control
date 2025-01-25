@@ -366,17 +366,14 @@ class SystemD:
         else:
             subprocess.call(['sudo', '-n', 'rm', path])
 
-    def run(self, args, silent=False, allow_fail=False):
+    def run(self, args, silent=False):
         if os.geteuid() != 0:
             args = ['sudo', '-n'] + args
         kwargs = {}
         if silent:
             kwargs['stdout'] = subprocess.DEVNULL
             kwargs['stderr'] = subprocess.DEVNULL
-        if allow_fail:
-            subprocess.call(args, **kwargs)
-        else:
-            subprocess.check_call(args, **kwargs)
+        subprocess.check_call(args, **kwargs)
 
     def quote(self, s):
         # escape for systemd
@@ -598,7 +595,7 @@ class SystemD:
                       '-' + service.name + '.service'], silent=True)
             return True
         except subprocess.CalledProcessError as e:
-            if e.returncode == 3:
+            if e.returncode == 3 or e.returncode == 4:
                 return False
             raise e
 
@@ -632,7 +629,7 @@ class SystemD:
         try:
             if service.type == 'daemon':
                 self.run(['systemctl', 'is-enabled', service.config.name +
-                          '-' + service.name + '.service'], silent=True, allow_fail=True)
+                          '-' + service.name + '.service'], silent=True)
             elif service.type == 'periodic' or service.type == 'cron':
                 self.run(['systemctl', 'is-enabled', service.config.name +
                           '-' + service.name + '.timer'], silent=True)
