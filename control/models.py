@@ -91,7 +91,7 @@ class ExecutableModel(BaseModel):
 class ServiceModel(ExecutableModel):
     """Model for a service configuration."""
 
-    user: str | None = None
+    user: Literal["dynamic"] | str | None = None
     type: Literal["daemon", "periodic", "cron"] | None = None
     systemd: str | None = None
     systemd_timer: str | None = None

@@ -297,7 +297,13 @@ class SystemD:
             tpl += f"SyslogIdentifier={service.syslog}\n"
         else:
             tpl += f"SyslogIdentifier={service.config.name}-{service.name}\n"
-        tpl += f"User={service.user or 'root'}\n"
+
+        # Handle user configuration
+        if service.user == "dynamic":
+            tpl += "DynamicUser=yes\n"
+        else:
+            tpl += f"User={service.user or 'root'}\n"
+
         tpl += f"ExecStart={' '.join([shlex.quote(i) for i in service.args])}\n"
 
         cwd = service.cwd or (
