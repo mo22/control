@@ -821,6 +821,10 @@ class LaunchD(Backend):
 
     def start(self, service: Service) -> None:
         """Start service."""
+        plist_path = self._get_plist_path(service)
+        if not plist_path.exists():
+            print(f"{service.name}: not installed")
+            return
         if self.is_started(service):
             return
         print(f"start {service.name}")
@@ -829,6 +833,10 @@ class LaunchD(Backend):
 
     def stop(self, service: Service) -> None:
         """Stop service."""
+        plist_path = self._get_plist_path(service)
+        if not plist_path.exists():
+            print(f"{service.name}: not installed")
+            return
         if not self.is_started(service):
             return
         print(f"stop {service.name}")
@@ -837,6 +845,10 @@ class LaunchD(Backend):
 
     def restart(self, service: Service) -> None:
         """Restart service."""
+        plist_path = self._get_plist_path(service)
+        if not plist_path.exists():
+            print(f"{service.name}: not installed")
+            return
         print(f"restart {service.name}")
         self.stop(service)
         time.sleep(1)
