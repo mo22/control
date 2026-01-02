@@ -2,7 +2,7 @@
 name = "control"
 version = "0.2"
 description = "manage processes"
-readme = "README.txt"
+readme = "README.md"
 authors = [
     { name = "Moritz Moeller", email = "mm@mxs.de" }
 ]

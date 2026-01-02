@@ -1,10 +1,20 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml>=6.0", "pydantic>=2.0", "click>=8.1.8"]
+# ///
 """Click-based CLI for control."""
 
 import logging
 
 import click
 
-from .api import Commands, Config
+try:
+    from .api import Commands, Config
+    from .models import ConfigModel
+except ImportError:
+    from control.api import Commands, Config
+    from control.models import ConfigModel
 
 
 @click.group()
@@ -18,24 +28,39 @@ def cli(ctx, verbose, config):
     else:
         logging.basicConfig(level=logging.WARNING)
 
-    # Load config and store in context
+    # Store config path in context (load lazily)
     ctx.ensure_object(dict)
-    ctx.obj["config"] = Config.load(config)
-    ctx.obj["commands"] = Commands(ctx.obj["config"])
+    ctx.obj["config_path"] = config
+    ctx.obj["_config"] = None
+    ctx.obj["_commands"] = None
+
+
+def get_config(ctx) -> Config:
+    """Get or load the config."""
+    if ctx.obj["_config"] is None:
+        ctx.obj["_config"] = Config.load(ctx.obj["config_path"])
+    return ctx.obj["_config"]
+
+
+def get_commands(ctx) -> Commands:
+    """Get or create the commands object."""
+    if ctx.obj["_commands"] is None:
+        ctx.obj["_commands"] = Commands(get_config(ctx))
+    return ctx.obj["_commands"]
 
 
 @cli.command()
 @click.pass_context
 def dump(ctx):
     """Dump parsed configuration."""
-    ctx.obj["commands"].dump()
+    get_commands(ctx).dump()
 
 
 @cli.command()
 @click.pass_context
 def prefix(ctx):
     """Print prefix/name."""
-    ctx.obj["commands"].prefix()
+    get_commands(ctx).prefix()
 
 
 @cli.command()
@@ -43,7 +68,7 @@ def prefix(ctx):
 @click.pass_context
 def run(ctx, name):
     """Run service."""
-    ctx.obj["commands"].run(name=name)
+    get_commands(ctx).run(name=name)
 
 
 @cli.command()
@@ -51,7 +76,7 @@ def run(ctx, name):
 @click.pass_context
 def install(ctx, names):
     """Install service."""
-    ctx.obj["commands"].install(names=names)
+    get_commands(ctx).install(names=names)
 
 
 @cli.command()
@@ -59,7 +84,7 @@ def install(ctx, names):
 @click.pass_context
 def uninstall(ctx, names):
     """Uninstall service."""
-    ctx.obj["commands"].uninstall(names=names)
+    get_commands(ctx).uninstall(names=names)
 
 
 @cli.command()
@@ -67,7 +92,7 @@ def uninstall(ctx, names):
 @click.pass_context
 def start(ctx, names):
     """Start service."""
-    ctx.obj["commands"].start(names=names)
+    get_commands(ctx).start(names=names)
 
 
 @cli.command()
@@ -75,7 +100,7 @@ def start(ctx, names):
 @click.pass_context
 def stop(ctx, names):
     """Stop service."""
-    ctx.obj["commands"].stop(names=names)
+    get_commands(ctx).stop(names=names)
 
 
 @cli.command()
@@ -83,7 +108,7 @@ def stop(ctx, names):
 @click.pass_context
 def restart(ctx, names):
     """Restart service."""
-    ctx.obj["commands"].restart(names=names)
+    get_commands(ctx).restart(names=names)
 
 
 @cli.command()
@@ -91,7 +116,7 @@ def restart(ctx, names):
 @click.pass_context
 def reload(ctx, names):
     """Reload service."""
-    ctx.obj["commands"].reload(names=names)
+    get_commands(ctx).reload(names=names)
 
 
 @cli.command("is-started")
@@ -99,7 +124,7 @@ def reload(ctx, names):
 @click.pass_context
 def is_started(ctx, name):
     """Check if service is started."""
-    ctx.obj["commands"].is_started(name=name)
+    get_commands(ctx).is_started(name=name)
 
 
 @cli.command()
@@ -107,7 +132,7 @@ def is_started(ctx, name):
 @click.pass_context
 def enable(ctx, names):
     """Enable service."""
-    ctx.obj["commands"].enable(names=names)
+    get_commands(ctx).enable(names=names)
 
 
 @cli.command()
@@ -115,7 +140,7 @@ def enable(ctx, names):
 @click.pass_context
 def disable(ctx, names):
     """Disable service."""
-    ctx.obj["commands"].disable(names=names)
+    get_commands(ctx).disable(names=names)
 
 
 @cli.command("is-enabled")
@@ -123,7 +148,7 @@ def disable(ctx, names):
 @click.pass_context
 def is_enabled(ctx, name):
     """Check if service is enabled."""
-    ctx.obj["commands"].is_enabled(name=name)
+    get_commands(ctx).is_enabled(name=name)
 
 
 @cli.command()
@@ -132,7 +157,7 @@ def is_enabled(ctx, name):
 @click.pass_context
 def status(ctx, names, full):
     """List services and status."""
-    ctx.obj["commands"].status(names=names, full=full)
+    get_commands(ctx).status(names=names, full=full)
 
 
 @cli.command()
@@ -140,7 +165,7 @@ def status(ctx, names, full):
 @click.pass_context
 def json(ctx, names):
     """List services and status as JSON."""
-    ctx.obj["commands"].status_json(names=names)
+    get_commands(ctx).status_json(names=names)
 
 
 @cli.command()
@@ -149,7 +174,25 @@ def json(ctx, names):
 @click.pass_context
 def log(ctx, names, follow):
     """Show logs."""
-    ctx.obj["commands"].log(names=names, follow=follow)
+    get_commands(ctx).log(names=names, follow=follow)
+
+
+@cli.command()
+@click.option("--output", "-o", type=click.Path(), help="Output file path")
+@click.pass_context
+def schema(ctx, output):
+    """Generate JSON schema for config file."""
+    import json
+
+    schema_json = ConfigModel.model_json_schema()
+    schema_str = json.dumps(schema_json, indent=2)
+
+    if output:
+        with open(output, "w") as f:
+            f.write(schema_str)
+        click.echo(f"Schema written to {output}")
+    else:
+        click.echo(schema_str)
 
 
 def main():

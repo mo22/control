@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/mo22/control/master/control.schema.json",
+  "title": "control.yaml",
+  "description": "Configuration schema for control process manager",
+  "type": "object",
+  "required": ["name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the configuration"
+    },
+    "version": {
+      "type": "string",
+      "const": "https://github.com/mo22/control",
+      "description": "Schema version identifier"
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables available for substitution using {VAR} syntax",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "integer" },
+          { "type": "boolean" }
+        ]
+      }
+    },
+    "groups": {
+      "type": "object",
+      "description": "Named groups of services",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Service definitions",
+      "additionalProperties": {
+        "$ref": "#/$defs/service"
+      }
+    }
+  },
+  "$defs": {
+    "service": {
+      "type": "object",
+      "description": "Service configuration",
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["cmd"] },
+        { "required": ["run"] },
+        { "required": ["shell"] }
+      ],
+      "properties": {
+        "cmd": {
+          "type": "string",
+          "description": "Command executable path"
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments for cmd"
+        },
+        "run": {
+          "type": "string",
+          "description": "Shell command string to parse and execute"
+        },
+        "shell": {
+          "type": "string",
+          "description": "Shell script to execute via /bin/sh -c"
+        },
+        "env": {
+          "type": "object",
+          "description": "Service-specific environment variables",
+          "additionalProperties": { "type": "string" }
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory for the service"
+        },
+        "user": {
+          "oneOf": [
+            { "const": "dynamic", "description": "Create a dynamic user" },
+            { "type": "string", "description": "Run as specific user" }
+          ],
+          "description": "User to run the service as"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["daemon", "periodic", "cron"],
+          "description": "Service type: daemon (long-running), periodic (interval-based), or cron (schedule-based)"
+        },
+        "systemd": {
+          "type": "string",
+          "description": "Additional systemd unit configuration"
+        },
+        "systemd_timer": {
+          "type": "string",
+          "description": "Additional systemd timer configuration"
+        },
+        "interval": {
+          "type": "string",
+          "description": "Interval between runs for periodic services (e.g., '5m', '1h')"
+        },
+        "first_interval": {
+          "type": "string",
+          "description": "Initial delay before first run"
+        },
+        "random_delay": {
+          "type": "string",
+          "description": "Random delay added to interval"
+        },
+        "cron": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ],
+          "description": "Cron schedule expression(s)"
+        },
+        "max_cpu": {
+          "type": "string",
+          "description": "CPU limit (e.g., '50%')"
+        },
+        "max_memory": {
+          "type": "string",
+          "description": "Memory limit (e.g., '512M')"
+        },
+        "max_time": {
+          "type": "string",
+          "description": "Maximum runtime limit"
+        },
+        "nofile": {
+          "type": "integer",
+          "description": "File descriptor limit"
+        },
+        "syslog": {
+          "type": "string",
+          "description": "Syslog identifier"
+        }
+      }
+    }
+  }
+}

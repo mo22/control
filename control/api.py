@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import re
 import shlex
 import subprocess
 import sys
 import time
+from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Sequence
 
 import yaml
@@ -207,7 +210,79 @@ class Config:
         return cls(model, path)
 
 
-class SystemD:
+class Backend(ABC):
+    """Abstract base class for service backends."""
+
+    @abstractmethod
+    def install(self, service: Service) -> None:
+        """Install service."""
+        pass
+
+    @abstractmethod
+    def uninstall(self, service: Service) -> None:
+        """Uninstall service."""
+        pass
+
+    @abstractmethod
+    def uninstall_all(self, config: Config) -> None:
+        """Uninstall all services from config."""
+        pass
+
+    @abstractmethod
+    def start(self, service: Service) -> None:
+        """Start service."""
+        pass
+
+    @abstractmethod
+    def stop(self, service: Service) -> None:
+        """Stop service."""
+        pass
+
+    @abstractmethod
+    def restart(self, service: Service) -> None:
+        """Restart service."""
+        pass
+
+    @abstractmethod
+    def reload(self, service: Service) -> None:
+        """Reload service."""
+        pass
+
+    @abstractmethod
+    def is_started(self, service: Service) -> bool:
+        """Check if service is started."""
+        pass
+
+    @abstractmethod
+    def enable(self, service: Service) -> None:
+        """Enable service."""
+        pass
+
+    @abstractmethod
+    def disable(self, service: Service) -> None:
+        """Disable service."""
+        pass
+
+    @abstractmethod
+    def is_enabled(self, service: Service) -> bool:
+        """Check if service is enabled."""
+        pass
+
+    @abstractmethod
+    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+        """Show logs of a service."""
+        pass
+
+
+def get_backend() -> Backend:
+    """Get the appropriate backend for the current platform."""
+    if sys.platform == "darwin":
+        return LaunchD()
+    else:
+        return SystemD()
+
+
+class SystemD(Backend):
     """SystemD backend for managing services."""
 
     unit_path = "/etc/systemd/system/"
@@ -566,6 +641,280 @@ class SystemD:
                 return False
             raise e
 
+    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+        """Show logs of a service."""
+        args = [
+            "journalctl",
+            "--no-pager",
+            "-u",
+            f"{service.config.name}-{service.name}",
+        ]
+        if follow:
+            args.append("-f")
+        if os.getuid() != 0:
+            args = ["sudo", "-n"] + args
+        if follow:
+            return subprocess.Popen(args)
+        else:
+            subprocess.call(args)
+            return None
+
+
+class LaunchD(Backend):
+    """LaunchD backend for managing services on macOS."""
+
+    def __init__(self):
+        self.launchd_dir = Path.home() / "Library" / "LaunchAgents"
+        self.log_dir = Path.home() / "Library" / "Logs" / "control"
+        self.launchd_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_label(self, service: Service) -> str:
+        """Get the launchd label for a service."""
+        return f"control.{service.config.name}.{service.name}"
+
+    def _get_plist_path(self, service: Service) -> Path:
+        """Get the plist file path for a service."""
+        return self.launchd_dir / f"{self._get_label(service)}.plist"
+
+    def _get_log_files(self, service: Service) -> tuple[Path, Path]:
+        """Get stdout and stderr log file paths for a service."""
+        label = self._get_label(service)
+        return self.log_dir / f"{label}.stdout.log", self.log_dir / f"{label}.stderr.log"
+
+    def _detect_path(self) -> str:
+        """Detect PATH for subprocess environments."""
+        paths = ["/usr/local/bin", "/usr/bin", "/bin"]
+        for p in ["/opt/homebrew/bin", str(Path.home() / ".local/bin"), str(Path.home() / ".cargo/bin")]:
+            if Path(p).exists():
+                paths.insert(0, p)
+        return ":".join(paths)
+
+    def _generate_plist(self, service: Service) -> dict:
+        """Generate launchd plist dict for a service."""
+        label = self._get_label(service)
+        stdout_log, stderr_log = self._get_log_files(service)
+
+        cwd = service.cwd or (
+            os.path.dirname(service.config.path) if service.config.path else "."
+        )
+
+        plist = {
+            "Label": label,
+            "ProgramArguments": service.args,
+            "WorkingDirectory": os.path.realpath(cwd),
+            "StandardOutPath": str(stdout_log),
+            "StandardErrorPath": str(stderr_log),
+            "EnvironmentVariables": {
+                "PATH": self._detect_path(),
+                "HOME": str(Path.home()),
+                **service.env,
+            },
+            "ProcessType": "Background",
+        }
+
+        if service.type == "daemon":
+            plist["RunAtLoad"] = True
+            plist["KeepAlive"] = {"SuccessfulExit": False}
+            plist["ThrottleInterval"] = 10
+
+        # Handle cron/periodic types with calendar intervals
+        if service.type == "cron" and service.cron:
+            crons = service.cron if isinstance(service.cron, list) else [service.cron]
+            intervals = []
+            for cron_expr in crons:
+                interval = self._parse_cron_to_calendar(cron_expr)
+                if interval:
+                    intervals.append(interval)
+            if intervals:
+                plist["StartCalendarInterval"] = intervals if len(intervals) > 1 else intervals[0]
+
+        if service.type == "periodic" and service.interval:
+            seconds = self._parse_interval(service.interval)
+            if seconds:
+                plist["StartInterval"] = seconds
+
+        return plist
+
+    def _parse_cron_to_calendar(self, cron_expr: str) -> dict | None:
+        """Parse a cron expression to launchd StartCalendarInterval format."""
+        parts = cron_expr.split()
+        if len(parts) != 5:
+            return None
+
+        minute, hour, day, month, weekday = parts
+        interval = {}
+
+        if minute != "*":
+            interval["Minute"] = int(minute)
+        if hour != "*":
+            interval["Hour"] = int(hour)
+        if day != "*":
+            interval["Day"] = int(day)
+        if month != "*":
+            interval["Month"] = int(month)
+        if weekday != "*":
+            interval["Weekday"] = int(weekday)
+
+        return interval if interval else None
+
+    def _parse_interval(self, interval: str) -> int | None:
+        """Parse a time interval string to seconds."""
+        import re
+        match = re.match(r"(\d+)\s*(s|sec|seconds?|m|min|minutes?|h|hours?|d|days?)?", interval, re.I)
+        if not match:
+            return None
+        value = int(match.group(1))
+        unit = (match.group(2) or "s").lower()
+        if unit.startswith("m"):
+            return value * 60
+        elif unit.startswith("h"):
+            return value * 3600
+        elif unit.startswith("d"):
+            return value * 86400
+        return value
+
+    def install(self, service: Service) -> None:
+        """Install service."""
+        plist_path = self._get_plist_path(service)
+        plist_data = self._generate_plist(service)
+
+        # Unload if already loaded
+        if plist_path.exists():
+            subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
+
+        # Write plist
+        with open(plist_path, "wb") as f:
+            plistlib.dump(plist_data, f)
+
+        print(f"installed {service.name}")
+
+        # Enable after install
+        self.enable(service)
+
+    def uninstall(self, service: Service) -> None:
+        """Uninstall service."""
+        plist_path = self._get_plist_path(service)
+
+        if plist_path.exists():
+            try:
+                self.stop(service)
+            except Exception:
+                pass
+            try:
+                self.disable(service)
+            except Exception:
+                pass
+            plist_path.unlink()
+            print(f"uninstalled {service.name}")
+        else:
+            print(f"{service.name}: not installed")
+
+    def uninstall_all(self, config: Config) -> None:
+        """Uninstall all services from config."""
+        prefix = f"control.{config.name}."
+        for plist_file in self.launchd_dir.glob("control.*.plist"):
+            if plist_file.name.startswith(prefix):
+                subprocess.run(["launchctl", "unload", str(plist_file)], capture_output=True)
+                plist_file.unlink()
+                print(f"uninstalled {plist_file.stem}")
+
+    def start(self, service: Service) -> None:
+        """Start service."""
+        if self.is_started(service):
+            return
+        print(f"start {service.name}")
+        label = self._get_label(service)
+        subprocess.run(["launchctl", "start", label], check=True)
+
+    def stop(self, service: Service) -> None:
+        """Stop service."""
+        if not self.is_started(service):
+            return
+        print(f"stop {service.name}")
+        label = self._get_label(service)
+        subprocess.run(["launchctl", "stop", label], check=True)
+
+    def restart(self, service: Service) -> None:
+        """Restart service."""
+        print(f"restart {service.name}")
+        self.stop(service)
+        time.sleep(1)
+        self.start(service)
+
+    def reload(self, service: Service) -> None:
+        """Reload service (same as restart on launchd)."""
+        self.restart(service)
+
+    def is_started(self, service: Service) -> bool:
+        """Check if service is started."""
+        label = self._get_label(service)
+        result = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3 and parts[2] == label:
+                # First column is PID or "-"
+                return parts[0] != "-"
+        return False
+
+    def enable(self, service: Service) -> None:
+        """Enable service (load plist)."""
+        plist_path = self._get_plist_path(service)
+        if not plist_path.exists():
+            print(f"{service.name}: not installed")
+            return
+        if self.is_enabled(service):
+            return
+        print(f"enable {service.name}")
+        subprocess.run(["launchctl", "load", str(plist_path)], check=True)
+
+    def disable(self, service: Service) -> None:
+        """Disable service (unload plist)."""
+        plist_path = self._get_plist_path(service)
+        if not plist_path.exists():
+            return
+        if not self.is_enabled(service):
+            return
+        print(f"disable {service.name}")
+        subprocess.run(["launchctl", "unload", str(plist_path)], check=True)
+
+    def is_enabled(self, service: Service) -> bool:
+        """Check if service is enabled (loaded)."""
+        label = self._get_label(service)
+        result = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3 and parts[2] == label:
+                return True
+        return False
+
+    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+        """Show logs of a service."""
+        stdout_log, stderr_log = self._get_log_files(service)
+        log_files = []
+        if stdout_log.exists():
+            log_files.append(str(stdout_log))
+        if stderr_log.exists():
+            log_files.append(str(stderr_log))
+
+        if not log_files:
+            print(f"{service.name}: no log files found")
+            return None
+
+        if follow:
+            return subprocess.Popen(["tail", "-f"] + log_files)
+        else:
+            subprocess.run(["cat"] + log_files)
+            return None
+
 
 class Commands:
     """Command implementations."""
@@ -606,13 +955,13 @@ class Commands:
 
     def install(self, names: Sequence[str]) -> None:
         """Install services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.install(service)
 
     def uninstall(self, names: Sequence[str]) -> None:
         """Uninstall services."""
-        backend = SystemD()
+        backend = get_backend()
         if len(names) == 0:
             backend.uninstall_all(self.config)
         for service in self.config.get_services(list(names)):
@@ -620,50 +969,50 @@ class Commands:
 
     def start(self, names: Sequence[str]) -> None:
         """Start services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.start(service)
 
     def stop(self, names: Sequence[str]) -> None:
         """Stop services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.stop(service)
 
     def restart(self, names: Sequence[str]) -> None:
         """Restart services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.restart(service)
 
     def reload(self, names: Sequence[str]) -> None:
         """Reload services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.reload(service)
 
     def is_started(self, name: str) -> None:
         """Check if service is started."""
-        backend = SystemD()
+        backend = get_backend()
         service = self.config.get_service(name)
         if service:
             backend.is_started(service)
 
     def enable(self, names: Sequence[str]) -> None:
         """Enable services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.enable(service)
 
     def disable(self, names: Sequence[str]) -> None:
         """Disable services."""
-        backend = SystemD()
+        backend = get_backend()
         for service in self.config.get_services(list(names)):
             backend.disable(service)
 
     def is_enabled(self, name: str) -> None:
         """Check if service is enabled."""
-        backend = SystemD()
+        backend = get_backend()
         service = self.config.get_service(name)
         if service:
             backend.is_enabled(service)
@@ -671,7 +1020,7 @@ class Commands:
     def status(self, names: Sequence[str], full: bool = False) -> None:
         """Show status of services."""
         service_names = list(names) if names else "all"
-        backend = SystemD()
+        backend = get_backend()
         for service in sorted(
             self.config.get_services(service_names), key=lambda i: i.name
         ):
@@ -682,7 +1031,7 @@ class Commands:
                     "running" if backend.is_started(service) else "stopped",
                 )
             )
-            if full:
+            if full and isinstance(backend, SystemD):
                 try:
                     backend.run(
                         [
@@ -699,7 +1048,7 @@ class Commands:
     def status_json(self, names: Sequence[str]) -> None:
         """Show status of services as JSON."""
         service_names = list(names) if names else "all"
-        backend = SystemD()
+        backend = get_backend()
         res_services = {}
         for service in sorted(
             self.config.get_services(service_names), key=lambda i: i.name
@@ -714,33 +1063,18 @@ class Commands:
 
     def log(self, names: Sequence[str], follow: bool = False) -> None:
         """Show logs of services."""
-        backend = SystemD()
-        if follow:
-            procs = []
-            for service in self.config.get_services(list(names)):
-                args = [
-                    "journalctl",
-                    "--no-pager",
-                    "-f",
-                    "-u",
-                    f"{service.config.name}-{service.name}",
-                ]
-                if os.getuid() != 0:
-                    args = ["sudo", "-n"] + args
-                procs.append(subprocess.Popen(args))
-            if len(procs) > 0:
+        backend = get_backend()
+        procs = []
+        for service in self.config.get_services(list(names)):
+            proc = backend.log(service, follow=follow)
+            if proc:
+                procs.append(proc)
+        if follow and procs:
+            try:
                 procs[0].wait()
+            except KeyboardInterrupt:
+                pass
             for proc in procs:
                 proc.terminate()
             for proc in procs:
                 proc.wait()
-        else:
-            for service in self.config.get_services(list(names)):
-                backend.run(
-                    [
-                        "journalctl",
-                        "--no-pager",
-                        "-u",
-                        f"{service.config.name}-{service.name}",
-                    ]
-                )
