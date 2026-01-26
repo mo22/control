@@ -637,7 +637,8 @@ class SystemD(Backend):
                 )
             return True
         except subprocess.CalledProcessError as e:
-            if e.returncode == 1:
+            if e.returncode in (1, 4):
+                # 1: disabled, 4: unit not found (not installed)
                 return False
             raise e
 
