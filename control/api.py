@@ -319,13 +319,13 @@ class SystemD(Backend):
         if os.geteuid() == 0:
             os.unlink(path)
         else:
-            subprocess.call(["sudo", "-n", "rm", path])
+            subprocess.call(["sudo", "-n", "rm", path], stdin=subprocess.DEVNULL)
 
     def run(self, args: list[str], silent: bool = False) -> None:
         """Run command with sudo if needed."""
         if os.geteuid() != 0:
             args = ["sudo", "-n"] + args
-        kwargs = {}
+        kwargs = {"stdin": subprocess.DEVNULL}
         if silent:
             kwargs["stdout"] = subprocess.DEVNULL
             kwargs["stderr"] = subprocess.DEVNULL
@@ -333,7 +333,7 @@ class SystemD(Backend):
 
     def systemd_version(self) -> int:
         """Get systemd version."""
-        tmp = subprocess.check_output(["systemd", "--version"])
+        tmp = subprocess.check_output(["systemd", "--version"], stdin=subprocess.DEVNULL)
         return int(tmp.decode("utf-8").split("\n")[0].split(" ")[1])
 
     def service_template(self, service: Service) -> str:
@@ -655,9 +655,9 @@ class SystemD(Backend):
         if os.getuid() != 0:
             args = ["sudo", "-n"] + args
         if follow:
-            return subprocess.Popen(args)
+            return subprocess.Popen(args, stdin=subprocess.DEVNULL)
         else:
-            subprocess.call(args)
+            subprocess.call(args, stdin=subprocess.DEVNULL)
             return None
 
 
