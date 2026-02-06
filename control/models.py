@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import subprocess
+import shutil
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -68,18 +68,18 @@ class ExecutableModel(BaseModel):
             exec_args = ["python"] + exec_args
 
         # Resolve command path
-        if not os.path.isfile(resolve(exec_args[0])) and "/" not in exec_args[0]:
-            try:
-                result = subprocess.check_output(["which", exec_args[0]]).strip()
-                exec_args[0] = result.decode("utf-8")
-            except subprocess.CalledProcessError:
-                pass
-
-        exec_args[0] = resolve(exec_args[0])
-
-        # Verify the executable exists
-        if not os.path.isfile(exec_args[0]):
-            raise ValueError(f"Executable does not exist: {exec_args[0]}")
+        if "/" not in exec_args[0]:
+            # Use shutil.which to find the command on PATH without following
+            # symlinks, so we get stable paths like /opt/homebrew/bin/uv
+            # instead of versioned cellar paths that break on upgrades.
+            resolved = shutil.which(exec_args[0])
+            if not resolved:
+                raise ValueError(f"Executable not found on PATH: {exec_args[0]}")
+            exec_args[0] = resolved
+        else:
+            exec_args[0] = resolve(exec_args[0])
+            if not os.path.isfile(exec_args[0]):
+                raise ValueError(f"Executable does not exist: {exec_args[0]}")
 
         return exec_args
 

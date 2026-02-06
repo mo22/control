@@ -685,11 +685,7 @@ class LaunchD(Backend):
 
     def _detect_path(self) -> str:
         """Detect PATH for subprocess environments."""
-        paths = ["/usr/local/bin", "/usr/bin", "/bin"]
-        for p in ["/opt/homebrew/bin", str(Path.home() / ".local/bin"), str(Path.home() / ".cargo/bin")]:
-            if Path(p).exists():
-                paths.insert(0, p)
-        return ":".join(paths)
+        return os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
 
     def _generate_plist(self, service: Service) -> dict:
         """Generate launchd plist dict for a service."""
