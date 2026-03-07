@@ -171,10 +171,12 @@ def json(ctx, names):
 @cli.command()
 @click.argument("names", nargs=-1)
 @click.option("--follow", "-f", is_flag=True, help="Follow logs")
+@click.option("--since", "-s", default=None, help="Show logs since (e.g. '1 hour', '2026-01-01')")
+@click.option("--last", "-n", default=None, type=int, help="Show last N lines")
 @click.pass_context
-def log(ctx, names, follow):
+def log(ctx, names, follow, since, last):
     """Show logs."""
-    get_commands(ctx).log(names=names, follow=follow)
+    get_commands(ctx).log(names=names, follow=follow, since=since, last=last)
 
 
 @cli.command()

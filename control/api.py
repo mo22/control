@@ -269,7 +269,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+    def log(self, service: Service, follow: bool = False, since: str | None = None, last: int | None = None) -> subprocess.Popen | None:
         """Show logs of a service."""
         pass
 
@@ -642,7 +642,7 @@ class SystemD(Backend):
                 return False
             raise e
 
-    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+    def log(self, service: Service, follow: bool = False, since: str | None = None, last: int | None = None) -> subprocess.Popen | None:
         """Show logs of a service."""
         args = [
             "journalctl",
@@ -650,6 +650,10 @@ class SystemD(Backend):
             "-u",
             f"{service.config.name}-{service.name}",
         ]
+        if since:
+            args += ["--since", since]
+        if last is not None:
+            args += ["-n", str(last)]
         if follow:
             args.append("-f")
         if os.getuid() != 0:
@@ -905,8 +909,10 @@ class LaunchD(Backend):
                 return True
         return False
 
-    def log(self, service: Service, follow: bool = False) -> subprocess.Popen | None:
+    def log(self, service: Service, follow: bool = False, since: str | None = None, last: int | None = None) -> subprocess.Popen | None:
         """Show logs of a service."""
+        if since:
+            print(f"{service.name}: --since is not supported on macOS (log files have no timestamps)")
         stdout_log, stderr_log = self._get_log_files(service)
         log_files = []
         if stdout_log.exists():
@@ -919,7 +925,13 @@ class LaunchD(Backend):
             return None
 
         if follow:
-            return subprocess.Popen(["tail", "-f"] + log_files)
+            args = ["tail", "-f"]
+            if last is not None:
+                args += ["-n", str(last)]
+            return subprocess.Popen(args + log_files)
+        elif last is not None:
+            subprocess.run(["tail", "-n", str(last)] + log_files)
+            return None
         else:
             subprocess.run(["cat"] + log_files)
             return None
@@ -1070,12 +1082,12 @@ class Commands:
             res_services[service.name] = res_service
         print(json.dumps(res_services))
 
-    def log(self, names: Sequence[str], follow: bool = False) -> None:
+    def log(self, names: Sequence[str], follow: bool = False, since: str | None = None, last: int | None = None) -> None:
         """Show logs of services."""
         backend = get_backend()
         procs = []
         for service in self.config.get_services(list(names)):
-            proc = backend.log(service, follow=follow)
+            proc = backend.log(service, follow=follow, since=since, last=last)
             if proc:
                 procs.append(proc)
         if follow and procs:
