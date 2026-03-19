@@ -386,9 +386,12 @@ class SystemD(Backend):
         )
         tpl += f"WorkingDirectory={os.path.realpath(cwd)}\n"
 
-        if service.env:
-            for k, v in service.env.items():
-                tpl += f"Environment={k}={v}\n"
+        # Inject PATH from installer's environment if not explicitly set
+        env = dict(service.env) if service.env else {}
+        if "PATH" not in env:
+            env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        for k, v in env.items():
+            tpl += f"Environment={k}={v}\n"
         if service.max_cpu is not None:
             tpl += f"CPUQuota={service.max_cpu}\n"
         if service.max_memory is not None:
