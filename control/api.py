@@ -364,6 +364,11 @@ class SystemD(Backend):
         if service.type == "daemon":
             tpl += "Restart=on-failure\n"
             tpl += "RestartSec=10\n"
+            # KillMode=mixed: SIGTERM to the main process, SIGKILL to the rest
+            # of the cgroup. Ensures any subprocesses (including ones orphaned
+            # by a parent crash) are reaped on stop/restart instead of leaking.
+            tpl += "KillMode=mixed\n"
+            tpl += "TimeoutStopSec=30\n"
         else:
             tpl += "Restart=no\n"
         tpl += "StandardOutput=journal\n"
