@@ -1,6 +1,6 @@
 [project]
 name = "control"
-version = "0.2"
+version = "0.3"
 description = "manage processes"
 readme = "README.md"
 authors = [
