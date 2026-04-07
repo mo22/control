@@ -34,12 +34,13 @@ services:
 
 ## Subprocess cleanup
 
-Daemon services run by control are tracked as a systemd cgroup with
-`KillMode=mixed`. When a service is stopped, restarted, or crashes with
-`Restart=on-failure`, systemd kills every process in the cgroup — including
-orphaned descendants whose parent already exited. You don't need to set
-`PR_SET_PDEATHSIG` or manage your own process groups for the common
-"daemon with subprocess helpers" pattern.
+Services run by control are tracked as a systemd cgroup with
+`KillMode=mixed`. When a service is stopped, restarted, crashes with
+`Restart=on-failure`, or (for cron/periodic jobs) finishes naturally,
+systemd kills every process in the cgroup — including orphaned descendants
+whose parent already exited. You don't need to set `PR_SET_PDEATHSIG` or
+manage your own process groups for the common "service with subprocess
+helpers" pattern.
 
 This guarantee only applies to services managed by control. A process
 started outside systemd (e.g. via a user-session `run.sh`) is not in any

@@ -364,13 +364,14 @@ class SystemD(Backend):
         if service.type == "daemon":
             tpl += "Restart=on-failure\n"
             tpl += "RestartSec=10\n"
-            # KillMode=mixed: SIGTERM to the main process, SIGKILL to the rest
-            # of the cgroup. Ensures any subprocesses (including ones orphaned
-            # by a parent crash) are reaped on stop/restart instead of leaking.
-            tpl += "KillMode=mixed\n"
-            tpl += "TimeoutStopSec=30\n"
         else:
             tpl += "Restart=no\n"
+        # KillMode=mixed: SIGTERM to the main process, SIGKILL to the rest
+        # of the cgroup. Ensures any subprocesses (including ones orphaned
+        # by a parent crash or a misbehaving cron script) are reaped on
+        # stop/exit instead of leaking out of the unit's cgroup.
+        tpl += "KillMode=mixed\n"
+        tpl += "TimeoutStopSec=30\n"
         tpl += "StandardOutput=journal\n"
         tpl += "StandardError=journal\n"
         if service.syslog:
