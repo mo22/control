@@ -59,9 +59,19 @@ class Service:
         return self.model.systemd
 
     @property
+    def systemd_unit(self) -> str | None:
+        """Get systemd [Unit] section additions for the .service unit."""
+        return self.model.systemd_unit
+
+    @property
     def systemd_timer(self) -> str | None:
         """Get systemd timer configuration."""
         return self.model.systemd_timer
+
+    @property
+    def systemd_timer_unit(self) -> str | None:
+        """Get systemd [Unit] section additions for the .timer unit."""
+        return self.model.systemd_timer_unit
 
     @property
     def interval(self) -> str | None:
@@ -357,6 +367,10 @@ class SystemD(Backend):
             tpl += "StartLimitIntervalSec=0\n"
         else:
             tpl += "StartLimitInterval=0\n"
+        if service.systemd_unit:
+            tpl += service.systemd_unit
+            if not service.systemd_unit.endswith("\n"):
+                tpl += "\n"
         tpl += "\n"
 
         tpl += "[Service]\n"
@@ -430,6 +444,10 @@ class SystemD(Backend):
         tpl += "\n"
         tpl += "[Unit]\n"
         tpl += f"Description={service.config.name}-{service.name}\n"
+        if service.systemd_timer_unit:
+            tpl += service.systemd_timer_unit
+            if not service.systemd_timer_unit.endswith("\n"):
+                tpl += "\n"
         tpl += "\n"
         tpl += "[Timer]\n"
 

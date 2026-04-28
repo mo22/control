@@ -94,7 +94,9 @@ class ServiceModel(ExecutableModel):
     user: Literal["dynamic"] | str | None = None
     type: Literal["daemon", "periodic", "cron"] | None = None
     systemd: str | None = None
+    systemd_unit: str | None = None
     systemd_timer: str | None = None
+    systemd_timer_unit: str | None = None
     interval: str | None = None
     first_interval: str | None = None
     random_delay: str | None = None

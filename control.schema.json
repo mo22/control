@@ -94,11 +94,19 @@
         },
         "systemd": {
           "type": "string",
-          "description": "Additional systemd unit configuration"
+          "description": "Extra directives appended to the [Service] section of the generated .service unit"
+        },
+        "systemd_unit": {
+          "type": "string",
+          "description": "Extra directives appended to the [Unit] section of the generated .service unit (e.g. OnFailure=, Requires=, BindsTo=)"
         },
         "systemd_timer": {
           "type": "string",
-          "description": "Additional systemd timer configuration"
+          "description": "Extra directives appended to the [Timer] section of the generated .timer unit"
+        },
+        "systemd_timer_unit": {
+          "type": "string",
+          "description": "Extra directives appended to the [Unit] section of the generated .timer unit"
         },
         "interval": {
           "type": "string",
