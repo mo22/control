@@ -19,7 +19,9 @@ import yaml
 from .models import ConfigModel, ServiceModel
 
 DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
-PATH_PLACEHOLDER = "${PATH}"
+ENV_SOURCE_RE = re.compile(
+    r"\{([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\}"
+)
 
 
 class Service:
@@ -46,14 +48,30 @@ class Service:
         """Get environment variables."""
         return self.model.env
 
-    def process_env(self, defaults: Mapping[str, str]) -> dict[str, str]:
+    def process_env(
+        self,
+        defaults: Mapping[str, str],
+        system: Mapping[str, str],
+        user: Mapping[str, str] | None = None,
+    ) -> dict[str, str]:
         """Get process environment with backend defaults applied."""
         env = dict(defaults)
-        env.update(self.env)
-        if "PATH" in self.env and PATH_PLACEHOLDER in self.env["PATH"]:
-            if "PATH" not in defaults:
-                raise KeyError("PATH")
-            env["PATH"] = self.env["PATH"].replace(PATH_PLACEHOLDER, defaults["PATH"])
+        sources = {"sys": system, "user": os.environ if user is None else user}
+
+        def expand(value: str) -> str:
+            def replace(match: re.Match[str]) -> str:
+                source_name, var_name = match.groups()
+                if source_name not in sources:
+                    raise KeyError(f"{source_name}.{var_name}")
+                source = sources[source_name]
+                if var_name not in source:
+                    raise KeyError(f"{source_name}.{var_name}")
+                return source[var_name]
+
+            return ENV_SOURCE_RE.sub(replace, value)
+
+        for key, value in self.env.items():
+            env[key] = expand(value)
         return env
 
     @property
@@ -419,8 +437,12 @@ class SystemD(Backend):
         )
         tpl += f"WorkingDirectory={os.path.realpath(cwd)}\n"
 
-        # Include the installer's PATH by default, and let env.PATH extend it.
-        env = service.process_env({"PATH": os.environ.get("PATH", DEFAULT_PATH)})
+        # Include the installer's PATH by default; env values can reference
+        # explicit sources with {user.VAR} and {sys.VAR}.
+        env = service.process_env(
+            {"PATH": os.environ.get("PATH", DEFAULT_PATH)},
+            {"PATH": DEFAULT_PATH},
+        )
         for k, v in env.items():
             tpl += f"Environment={k}={v}\n"
         if service.max_cpu is not None:
@@ -745,7 +767,8 @@ class LaunchD(Backend):
             "StandardOutPath": str(stdout_log),
             "StandardErrorPath": str(stderr_log),
             "EnvironmentVariables": service.process_env(
-                {"PATH": self._detect_path(), "HOME": str(Path.home())}
+                {"PATH": self._detect_path(), "HOME": str(Path.home())},
+                {"PATH": DEFAULT_PATH},
             ),
             "ProcessType": "Background",
         }

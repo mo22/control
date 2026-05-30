@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+ENV_SOURCE_NAMES = {"sys", "user"}
+
 
 class ExecutableModel(BaseModel):
     """Model for an executable configuration."""
@@ -136,6 +138,8 @@ class ConfigModel(BaseModel):
                     var_name = match[1:-1]
                     if var_name in self.env:
                         data = data.replace(match, str(self.env[var_name]))
+                    elif var_name.split(".", 1)[0] in ENV_SOURCE_NAMES:
+                        continue
                     else:
                         print(f"WARNING: unknown variable {match}")
                 return data

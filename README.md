@@ -32,11 +32,16 @@ services:
     interval: 1h
 ```
 
-### Extending PATH
+### Referencing Environment Values
 
 control injects the installer's `PATH` into generated systemd units and
-launchd plists. If a service needs to add directories without replacing
-that detected path, set `env.PATH` with `${PATH}`:
+launchd plists when a service does not set `env.PATH`. Service-level
+`env` values can also reference explicit environment sources:
+
+- `{user.VAR}` reads from the environment of the `control install` process.
+- `{sys.PATH}` reads control's built-in fallback path.
+
+Quote values that start with `{...}` so YAML treats them as strings:
 
 ```yaml
 services:
@@ -44,11 +49,12 @@ services:
     shell: my-daemon
     type: daemon
     env:
-      PATH: ${PATH}:/opt/custom/bin
+      PATH: "{user.PATH}:/opt/custom/bin"
+      API_KEY: "{user.API_KEY}"
 ```
 
-`${PATH}` expansion is only supported in service-level `env.PATH`.
-Other `${VAR}` strings are left literal.
+If a referenced `{user.VAR}` or `{sys.VAR}` value is missing, install
+fails instead of writing a unit with a silently empty value.
 
 ## Subprocess cleanup
 

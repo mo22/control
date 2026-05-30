@@ -73,7 +73,7 @@
         },
         "env": {
           "type": "object",
-          "description": "Service-specific environment variables. In PATH only, ${PATH} expands to the installer-detected default PATH.",
+          "description": "Service-specific environment variables. Values can reference {user.VAR} from the install environment or {sys.PATH} from control's built-in fallback path.",
           "additionalProperties": { "type": "string" }
         },
         "cwd": {
