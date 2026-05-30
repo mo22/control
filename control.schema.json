@@ -73,7 +73,7 @@
         },
         "env": {
           "type": "object",
-          "description": "Service-specific environment variables",
+          "description": "Service-specific environment variables. In PATH only, ${PATH} expands to the installer-detected default PATH.",
           "additionalProperties": { "type": "string" }
         },
         "cwd": {

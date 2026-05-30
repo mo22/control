@@ -32,6 +32,24 @@ services:
     interval: 1h
 ```
 
+### Extending PATH
+
+control injects the installer's `PATH` into generated systemd units and
+launchd plists. If a service needs to add directories without replacing
+that detected path, set `env.PATH` with `${PATH}`:
+
+```yaml
+services:
+  worker:
+    shell: my-daemon
+    type: daemon
+    env:
+      PATH: ${PATH}:/opt/custom/bin
+```
+
+`${PATH}` expansion is only supported in service-level `env.PATH`.
+Other `${VAR}` strings are left literal.
+
 ## Subprocess cleanup
 
 Services run by control are tracked as a systemd cgroup with

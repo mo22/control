@@ -12,11 +12,14 @@ import sys
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import yaml
 
 from .models import ConfigModel, ServiceModel
+
+DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
+PATH_PLACEHOLDER = "${PATH}"
 
 
 class Service:
@@ -42,6 +45,16 @@ class Service:
     def env(self) -> dict[str, str]:
         """Get environment variables."""
         return self.model.env
+
+    def process_env(self, defaults: Mapping[str, str]) -> dict[str, str]:
+        """Get process environment with backend defaults applied."""
+        env = dict(defaults)
+        env.update(self.env)
+        if "PATH" in self.env and PATH_PLACEHOLDER in self.env["PATH"]:
+            if "PATH" not in defaults:
+                raise KeyError("PATH")
+            env["PATH"] = self.env["PATH"].replace(PATH_PLACEHOLDER, defaults["PATH"])
+        return env
 
     @property
     def user(self) -> str | None:
@@ -406,10 +419,8 @@ class SystemD(Backend):
         )
         tpl += f"WorkingDirectory={os.path.realpath(cwd)}\n"
 
-        # Inject PATH from installer's environment if not explicitly set
-        env = dict(service.env) if service.env else {}
-        if "PATH" not in env:
-            env["PATH"] = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        # Include the installer's PATH by default, and let env.PATH extend it.
+        env = service.process_env({"PATH": os.environ.get("PATH", DEFAULT_PATH)})
         for k, v in env.items():
             tpl += f"Environment={k}={v}\n"
         if service.max_cpu is not None:
@@ -716,7 +727,7 @@ class LaunchD(Backend):
 
     def _detect_path(self) -> str:
         """Detect PATH for subprocess environments."""
-        return os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        return os.environ.get("PATH", DEFAULT_PATH)
 
     def _generate_plist(self, service: Service) -> dict:
         """Generate launchd plist dict for a service."""
@@ -733,11 +744,9 @@ class LaunchD(Backend):
             "WorkingDirectory": os.path.realpath(cwd),
             "StandardOutPath": str(stdout_log),
             "StandardErrorPath": str(stderr_log),
-            "EnvironmentVariables": {
-                "PATH": self._detect_path(),
-                "HOME": str(Path.home()),
-                **service.env,
-            },
+            "EnvironmentVariables": service.process_env(
+                {"PATH": self._detect_path(), "HOME": str(Path.home())}
+            ),
             "ProcessType": "Background",
         }
 
