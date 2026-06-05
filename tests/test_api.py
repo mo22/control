@@ -1,14 +1,17 @@
 from contextlib import redirect_stdout
 from io import StringIO
+import os
 from pathlib import Path
+import shutil
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from control.api import Config, LaunchD, SystemD
+from control.api import Config, LaunchD, Service, SystemD
 from control.models import ConfigModel, ServiceModel
 
 
-def make_service(env: dict[str, str] | None = None):
+def make_service(env: dict[str, str] | None = None) -> Service:
     model = ConfigModel(
         name="test",
         version="https://github.com/mo22/control",
@@ -21,7 +24,9 @@ def make_service(env: dict[str, str] | None = None):
         },
     )
     config = Config(model, "/tmp/control.yaml")
-    return config.get_service("demo")
+    service = config.get_service("demo")
+    assert service is not None
+    return service
 
 
 class ServiceEnvTests(unittest.TestCase):
@@ -140,10 +145,12 @@ class ServiceEnvTests(unittest.TestCase):
         service = make_service({"PATH": "{sys.PATH}:/opt/custom/bin"})
         backend = object.__new__(LaunchD)
         backend._detect_path = lambda: "/usr/bin:/bin"
-        backend._get_log_files = lambda service: (
-            Path("/tmp/stdout"),
-            Path("/tmp/stderr"),
-        )
+
+        def get_log_files(service: Service) -> tuple[Path, Path]:
+            self.assertEqual(service.name, "demo")
+            return Path("/tmp/stdout"), Path("/tmp/stderr")
+
+        backend._get_log_files = get_log_files
 
         plist = backend._generate_plist(service)
 
@@ -151,6 +158,35 @@ class ServiceEnvTests(unittest.TestCase):
             plist["EnvironmentVariables"]["PATH"],
             "/usr/local/bin:/usr/bin:/bin:/opt/custom/bin",
         )
+
+
+class ExecutableArgsTests(unittest.TestCase):
+    def test_explicit_symlink_path_stays_unresolved(self):
+        target = shutil.which("true")
+        self.assertIsNotNone(target)
+        assert target is not None
+
+        with TemporaryDirectory() as tmpdir:
+            link = Path(tmpdir) / "truth"
+            os.symlink(target, link)
+
+            args = ServiceModel(cmd=str(link)).to_executable_args()
+            self.assertEqual(args[0], str(link))
+            self.assertNotEqual(args[0], os.path.realpath(args[0]))
+
+    def test_bare_command_resolves_on_path_without_following_symlink(self):
+        target = shutil.which("true")
+        self.assertIsNotNone(target)
+        assert target is not None
+
+        with TemporaryDirectory() as tmpdir:
+            link = Path(tmpdir) / "control-test-true"
+            os.symlink(target, link)
+
+            with patch.dict("os.environ", {"PATH": tmpdir}):
+                args = ServiceModel(cmd=link.name).to_executable_args()
+
+            self.assertEqual(args[0], str(link))
 
 
 if __name__ == "__main__":

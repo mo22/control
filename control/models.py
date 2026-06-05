@@ -57,7 +57,7 @@ class ExecutableModel(BaseModel):
         cwd = os.path.realpath(self.cwd) if self.cwd else base_cwd or "."
 
         def resolve(path: str) -> str:
-            return os.path.realpath(os.path.join(cwd, path))
+            return os.path.abspath(os.path.join(cwd, path))
 
         # Auto-detect and add interpreters
         if not os.access(resolve(exec_args[0]), os.X_OK) and exec_args[0].endswith(
