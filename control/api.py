@@ -7,6 +7,7 @@ import os
 import plistlib
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -892,7 +893,15 @@ class LaunchD(Backend):
         subprocess.run(["launchctl", "start", label], check=True)
 
     def stop(self, service: Service) -> None:
-        """Stop service."""
+        """Stop service and block until the process has actually exited.
+
+        ``launchctl stop`` only signals the job and returns immediately, so
+        callers (especially restart) used to race the old process's shutdown —
+        e.g. a daemon still flushing a shared sqlite WAL keeps the write lock,
+        and a freshly-started instance hits ``database is locked``. Capture the
+        running PID, signal the stop, then wait for that PID to disappear,
+        escalating to SIGKILL if it overruns the grace period.
+        """
         plist_path = self._get_plist_path(service)
         if not plist_path.exists():
             print(f"{service.name}: not installed")
@@ -901,7 +910,15 @@ class LaunchD(Backend):
             return
         print(f"stop {service.name}")
         label = self._get_label(service)
+        pid = self._get_pid(service)
         subprocess.run(["launchctl", "stop", label], check=True)
+        if pid is not None and not self._wait_for_exit(pid, timeout=15.0):
+            print(f"{service.name}: pid {pid} still alive after 15s, sending SIGKILL")
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            self._wait_for_exit(pid, timeout=5.0)
 
     def restart(self, service: Service) -> None:
         """Restart service."""
@@ -910,9 +927,30 @@ class LaunchD(Backend):
             print(f"{service.name}: not installed")
             return
         print(f"restart {service.name}")
+        # stop() now blocks until the old process is gone, so start() no longer
+        # races a still-shutting-down instance — no fixed sleep needed.
         self.stop(service)
-        time.sleep(1)
         self.start(service)
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        """Whether `pid` is still a live process."""
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True  # exists, owned by someone else
+        return True
+
+    def _wait_for_exit(self, pid: int, timeout: float) -> bool:
+        """Poll until `pid` exits or `timeout` seconds elapse. True if it exited."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self._pid_alive(pid):
+                return True
+            time.sleep(0.1)
+        return not self._pid_alive(pid)
 
     def reload(self, service: Service) -> None:
         """Reload service (same as restart on launchd)."""
@@ -932,6 +970,21 @@ class LaunchD(Backend):
                 # First column is PID or "-"
                 return parts[0] != "-"
         return False
+
+    def _get_pid(self, service: Service) -> int | None:
+        """Return the running PID of the service, or None if not running."""
+        label = self._get_label(service)
+        result = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3 and parts[2] == label:
+                pid = parts[0]
+                return int(pid) if pid != "-" else None
+        return None
 
     def enable(self, service: Service) -> None:
         """Enable service (load plist)."""
