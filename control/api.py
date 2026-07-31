@@ -890,28 +890,35 @@ class LaunchD(Backend):
             return
         print(f"start {service.name}")
         label = self._get_label(service)
+        if not self.is_enabled(service):
+            subprocess.run(["launchctl", "load", str(plist_path)], check=True)
+            if self.is_started(service):
+                return
         subprocess.run(["launchctl", "start", label], check=True)
 
     def stop(self, service: Service) -> None:
-        """Stop service and block until the process has actually exited.
+        """Stop service and block until launchd has actually removed the job.
 
-        ``launchctl stop`` only signals the job and returns immediately, so
-        callers (especially restart) used to race the old process's shutdown —
-        e.g. a daemon still flushing a shared sqlite WAL keeps the write lock,
-        and a freshly-started instance hits ``database is locked``. Capture the
-        running PID, signal the stop, then wait for that PID to disappear,
-        escalating to SIGKILL if it overruns the grace period.
+        Uses ``launchctl unload`` rather than ``launchctl stop``: a ``KeepAlive``
+        daemon is relaunched immediately after a plain stop, so the job never
+        actually stays down. Unloading removes it from launchd entirely, and
+        ``start()`` reloads the plist when it finds the job unloaded.
+
+        Unloading is still asynchronous with respect to the process, so keep the
+        PID wait: a daemon flushing a shared sqlite WAL holds the write lock, and
+        a freshly-started instance would hit ``database is locked``. Capture the
+        running PID, unload, then wait for that PID to disappear, escalating to
+        SIGKILL if it overruns the grace period.
         """
         plist_path = self._get_plist_path(service)
         if not plist_path.exists():
             print(f"{service.name}: not installed")
             return
-        if not self.is_started(service):
+        if not self.is_enabled(service):
             return
         print(f"stop {service.name}")
-        label = self._get_label(service)
         pid = self._get_pid(service)
-        subprocess.run(["launchctl", "stop", label], check=True)
+        subprocess.run(["launchctl", "unload", str(plist_path)], check=True)
         if pid is not None and not self._wait_for_exit(pid, timeout=15.0):
             print(f"{service.name}: pid {pid} still alive after 15s, sending SIGKILL")
             try:
@@ -919,6 +926,9 @@ class LaunchD(Backend):
             except ProcessLookupError:
                 pass
             self._wait_for_exit(pid, timeout=5.0)
+        if self.is_started(service) or self.is_enabled(service):
+            label = self._get_label(service)
+            raise RuntimeError(f"{service.name}: launchd job {label} is still loaded")
 
     def restart(self, service: Service) -> None:
         """Restart service."""

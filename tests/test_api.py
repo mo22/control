@@ -3,6 +3,7 @@ from io import StringIO
 import os
 from pathlib import Path
 import shutil
+import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -222,6 +223,124 @@ class ExecutableArgsTests(unittest.TestCase):
             self.assertEqual(args[1], "scripts/git-pull.py")
             self.assertNotIn("cpython-3.14.3", args[0])
             self.assertNotEqual(args[0], os.path.realpath(args[0]))
+
+
+class LaunchDStartStopTests(unittest.TestCase):
+    def make_backend(self, tmpdir: str) -> LaunchD:
+        backend = object.__new__(LaunchD)
+        backend.launchd_dir = Path(tmpdir)
+        backend.log_dir = Path(tmpdir)
+        return backend
+
+    def test_stop_unloads_keepalive_daemon_and_leaves_it_not_started(self):
+        service = make_service()
+
+        with TemporaryDirectory() as tmpdir:
+            backend = self.make_backend(tmpdir)
+            plist_path = backend._get_plist_path(service)
+            plist_path.write_text("")
+            label = backend._get_label(service)
+            state = {"loaded": True, "pid": 1234}
+            calls = []
+
+            def run(args, **_kwargs):
+                calls.append(args)
+                if args == ["launchctl", "list"]:
+                    stdout = f"{state['pid']}\t0\t{label}\n" if state["loaded"] else ""
+                    return subprocess.CompletedProcess(
+                        args, 0, stdout=stdout, stderr=""
+                    )
+                if args == ["launchctl", "unload", str(plist_path)]:
+                    state["loaded"] = False
+                    state["pid"] = None
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                raise AssertionError(f"unexpected subprocess call: {args}")
+
+            with (
+                patch("control.api.subprocess.run", side_effect=run),
+                patch.object(
+                    backend,
+                    "_pid_alive",
+                    side_effect=lambda pid: state["pid"] == pid,
+                ),
+            ):
+                backend.stop(service)
+                self.assertFalse(backend.is_started(service))
+
+            self.assertFalse(state["loaded"])
+            self.assertNotIn(["launchctl", "stop", label], calls)
+            self.assertIn(["launchctl", "unload", str(plist_path)], calls)
+
+    def test_stop_errors_if_launchd_relaunches_the_job(self):
+        service = make_service()
+
+        with TemporaryDirectory() as tmpdir:
+            backend = self.make_backend(tmpdir)
+            plist_path = backend._get_plist_path(service)
+            plist_path.write_text("")
+            label = backend._get_label(service)
+            state = {"loaded": True, "pid": 1234}
+
+            def run(args, **_kwargs):
+                if args == ["launchctl", "list"]:
+                    stdout = f"{state['pid']}\t0\t{label}\n" if state["loaded"] else ""
+                    return subprocess.CompletedProcess(
+                        args, 0, stdout=stdout, stderr=""
+                    )
+                if args == ["launchctl", "unload", str(plist_path)]:
+                    state["pid"] = 5678
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                raise AssertionError(f"unexpected subprocess call: {args}")
+
+            with (
+                patch("control.api.subprocess.run", side_effect=run),
+                patch.object(
+                    backend,
+                    "_pid_alive",
+                    side_effect=lambda pid: state["pid"] == pid,
+                ),
+                self.assertRaisesRegex(RuntimeError, "still loaded"),
+            ):
+                backend.stop(service)
+
+    def test_start_loads_unloaded_service_before_starting_it(self):
+        service = make_service()
+
+        with TemporaryDirectory() as tmpdir:
+            backend = self.make_backend(tmpdir)
+            plist_path = backend._get_plist_path(service)
+            plist_path.write_text("")
+            label = backend._get_label(service)
+            state = {"loaded": False, "pid": None}
+            calls = []
+
+            def run(args, **_kwargs):
+                calls.append(args)
+                if args == ["launchctl", "list"]:
+                    stdout = ""
+                    if state["loaded"]:
+                        pid = state["pid"] if state["pid"] is not None else "-"
+                        stdout = f"{pid}\t0\t{label}\n"
+                    return subprocess.CompletedProcess(
+                        args, 0, stdout=stdout, stderr=""
+                    )
+                if args == ["launchctl", "load", str(plist_path)]:
+                    state["loaded"] = True
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                if args == ["launchctl", "start", label]:
+                    self.assertTrue(state["loaded"])
+                    state["pid"] = 5678
+                    return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+                raise AssertionError(f"unexpected subprocess call: {args}")
+
+            with patch("control.api.subprocess.run", side_effect=run):
+                backend.start(service)
+
+            self.assertEqual(state["pid"], 5678)
+            self.assertLess(
+                calls.index(["launchctl", "load", str(plist_path)]),
+                calls.index(["launchctl", "start", label]),
+            )
 
 
 if __name__ == "__main__":
