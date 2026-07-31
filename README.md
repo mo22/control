@@ -4,9 +4,29 @@ A process manager for managing services via systemd.
 
 ## Installation
 
+On a server, install **system-wide** so that root, systemd and every login user
+resolve the same binary:
+
+```bash
+sudo env UV_TOOL_DIR=/usr/local/share/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin \
+  uv tool install --python /usr/bin/python3 git+https://github.com/mo22/control
+```
+
+`--python` matters: without it `uv` under `sudo` picks an interpreter under
+`/root/.local/share/uv/python/`, which works for root and fails for everyone
+else with `bad interpreter: Permission denied`. Use `/usr/bin/python3` where it
+satisfies `requires-python`; otherwise add
+`UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python` and pin a version
+(`--python 3.10`) so the managed interpreter lands somewhere world-readable.
+
+For a single-user machine, the plain per-user install is fine:
+
 ```bash
 uv tool install git+https://github.com/mo22/control
 ```
+
+Pick one per host. Running both leaves two copies at different versions, and
+which one you get depends on `PATH` order.
 
 ## Configuration
 
