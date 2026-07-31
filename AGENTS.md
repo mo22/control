@@ -43,6 +43,13 @@ version bump alone never touches running services. No systemd unit references th
 `control` binary — it is a management tool, not a supervisor. That makes the
 tool upgrade and the unit reinstall independently stageable.
 
+Check what a host actually runs before debugging a control incident there — a
+"live bug" has already turned out to be a stale deployment once:
+
+```bash
+ls -d /usr/local/share/uv/tools/control/lib/python*/site-packages/control-*.dist-info
+```
+
 Never put a uv tool's **venv bin dir** on `PATH` to reach `control`. lemon's
 `.bashrc` did (`export PATH="$HOME/.local/share/uv/tools/control/bin:$PATH"`),
 and that directory also contains `python`/`python3`/`python3.12`. Because
