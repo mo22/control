@@ -12,6 +12,10 @@
 (kirk, alpha, delta, clippy, lemon, spock-ubuntu) are on exactly that, running
 0.8; the per-user copies under `~/.local/share/uv/tools` were removed.
 
+This applies to the **servers**. The MacBook intentionally keeps a per-user
+install (`~/.local/share/uv/tools`) — it is single-user, and the launchd backend
+manages per-user agents under `gui/$UID` anyway. Do not "consolidate" it.
+
 Do not add a per-user install alongside it. The README's plain
 `uv tool install git+…` lands in the invoking user's `~/.local/share/uv/tools`,
 and because it does not fail when a system-wide copy already exists, hosts
