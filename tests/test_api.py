@@ -188,6 +188,41 @@ class ExecutableArgsTests(unittest.TestCase):
 
             self.assertEqual(args[0], str(link))
 
+    def test_relative_run_path_keeps_venv_interpreter_symlink(self):
+        """A ``run:`` command pointing into a virtualenv must stay in the venv.
+
+        ``.venv/bin/python`` is a symlink to the base interpreter, and CPython
+        finds ``pyvenv.cfg`` from the invocation path rather than the resolved
+        one. Dereferencing the symlink therefore starts Python *outside* the
+        virtualenv and every venv-installed import fails. The resolved target is
+        also version-stamped, so it would break again on a patch upgrade.
+        Regression test for control 0.4/0.5, which used ``os.path.realpath``
+        here (fixed in 0.6).
+        """
+        target = shutil.which("true")
+        self.assertIsNotNone(target)
+        assert target is not None
+
+        with TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            versioned_bin = base / "runtime" / "cpython-3.14.3" / "bin"
+            versioned_bin.mkdir(parents=True)
+            interpreter = versioned_bin / "python3.14"
+            shutil.copy(target, interpreter)
+
+            venv_bin = base / ".venv" / "bin"
+            venv_bin.mkdir(parents=True)
+            os.symlink(interpreter, venv_bin / "python")
+
+            args = ServiceModel(
+                run=".venv/bin/python scripts/git-pull.py"
+            ).to_executable_args(str(base))
+
+            self.assertEqual(args[0], str(venv_bin / "python"))
+            self.assertEqual(args[1], "scripts/git-pull.py")
+            self.assertNotIn("cpython-3.14.3", args[0])
+            self.assertNotEqual(args[0], os.path.realpath(args[0]))
+
 
 if __name__ == "__main__":
     unittest.main()
