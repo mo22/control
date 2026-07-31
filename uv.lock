@@ -34,7 +34,7 @@ wheels = [
 
 [[package]]
 name = "control"
-version = "0.6"
+version = "0.8"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
