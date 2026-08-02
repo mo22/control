@@ -179,6 +179,36 @@ def log(ctx, names, follow, since, last):
     get_commands(ctx).log(names=names, follow=follow, since=since, last=last)
 
 
+@cli.command("log-rotation")
+@click.option(
+    "--max-bytes",
+    default=None,
+    help="Rotate logs larger than this (bytes, or 50M / 1G)",
+)
+@click.option("--dry-run", is_flag=True, help="Report what would be rotated")
+def log_rotation(max_bytes, dry_run):
+    """Rotate oversized launchd log files (macOS)."""
+    _run_log_rotation(max_bytes=max_bytes, dry_run=dry_run)
+
+
+@cli.command("install-log-rotation")
+@click.option(
+    "--max-bytes",
+    default=None,
+    help="Rotate logs larger than this (bytes, or 50M / 1G)",
+)
+@click.option("--interval", default=None, help="How often to sweep (e.g. 15m, 1h)")
+def install_log_rotation(max_bytes, interval):
+    """Install the launchd agent that rotates service logs (macOS)."""
+    _install_log_rotation(max_bytes=max_bytes, interval=interval)
+
+
+@cli.command("uninstall-log-rotation")
+def uninstall_log_rotation():
+    """Remove the log rotation agent (macOS)."""
+    _uninstall_log_rotation()
+
+
 @cli.command()
 @click.option("--output", "-o", type=click.Path(), help="Output file path")
 @click.pass_context
@@ -195,6 +225,73 @@ def schema(ctx, output):
         click.echo(f"Schema written to {output}")
     else:
         click.echo(schema_str)
+
+
+def _logrotate():
+    """Import the rotation module, failing loudly on the systemd backend."""
+    try:
+        from . import logrotate
+    except ImportError:
+        from control import logrotate
+
+    if not logrotate.is_supported():
+        raise click.ClickException(
+            "log rotation is macOS-only: systemd services log to journald, "
+            "which bounds itself"
+        )
+    return logrotate
+
+
+def _run_log_rotation(max_bytes=None, dry_run=False):
+    lr = _logrotate()
+    limit = lr.parse_size(max_bytes) if max_bytes else lr.DEFAULT_MAX_BYTES
+    directory = lr.log_dir()
+
+    with lr.rotation_lock(directory) as acquired:
+        if not acquired:
+            click.echo("another rotation run is in progress; skipping")
+            return
+        results = lr.rotate_log_dir(directory, max_bytes=limit, dry_run=dry_run)
+
+    failed = False
+    for result in results:
+        if result.error:
+            failed = True
+            click.echo(f"{result.path.name}: {result.error}", err=True)
+        elif result.planned:
+            click.echo(f"would rotate {result.path.name} ({lr.human(result.size)})")
+        else:
+            assert result.archive is not None
+            click.echo(
+                f"rotated {result.path.name} ({lr.human(result.size)}"
+                f" -> {result.archive.name},"
+                f" {lr.human(result.archive.stat().st_size)})"
+            )
+    if dry_run and not results:
+        click.echo(f"nothing over {lr.human(limit)} in {directory}")
+    if failed:
+        raise SystemExit(1)
+
+
+def _install_log_rotation(max_bytes=None, interval=None):
+    lr = _logrotate()
+    limit = lr.parse_size(max_bytes) if max_bytes else lr.DEFAULT_MAX_BYTES
+    seconds = lr.parse_interval(interval) if interval else lr.DEFAULT_INTERVAL
+
+    existed = lr.install_agent(max_bytes=limit, interval=seconds)
+    verb = "reinstalled" if existed else "installed"
+    click.echo(
+        f"{verb} {lr.LABEL}: sweeping {lr.log_dir()} every {seconds}s,"
+        f" rotating logs over {lr.human(limit)}, keeping one gzipped generation"
+    )
+
+
+def _uninstall_log_rotation():
+    lr = _logrotate()
+    if lr.uninstall_agent():
+        click.echo(f"uninstalled {lr.LABEL}")
+    else:
+        click.echo(f"{lr.LABEL}: not installed")
 
 
 def main():

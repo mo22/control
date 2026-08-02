@@ -819,7 +819,8 @@ class LaunchD(Backend):
 
         return interval if interval else None
 
-    def _parse_interval(self, interval: str) -> int | None:
+    @staticmethod
+    def _parse_interval(interval: str) -> int | None:
         """Parse a time interval string to seconds."""
         import re
         match = re.match(r"(\d+)\s*(s|sec|seconds?|m|min|minutes?|h|hours?|d|days?)?", interval, re.I)
@@ -849,6 +850,12 @@ class LaunchD(Backend):
             plistlib.dump(plist_data, f)
 
         print(f"installed {service.name}")
+
+        # Imported lazily on purpose: control.logrotate imports from this module
+        # at module level, so importing it at the top here would be a cycle.
+        from . import logrotate
+
+        logrotate.hint_if_missing()
 
         # Enable after install
         self.enable(service)

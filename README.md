@@ -91,6 +91,35 @@ started outside systemd (e.g. via a user-session `run.sh`) is not in any
 tracked cgroup, and orphaned children there will keep running until killed
 manually.
 
+## Log rotation (macOS)
+
+On the systemd backend service output goes to journald, which enforces its own
+retention. On macOS launchd captures stdout/stderr into plain files under
+`~/Library/Logs/control` and never bounds them, so control ships an optional
+rotation agent:
+
+```bash
+control install-log-rotation                            # every 15 min, rotate over 50 MiB
+control install-log-rotation --max-bytes 200M --interval 1h
+control log-rotation --dry-run                          # what would be rotated right now
+control uninstall-log-rotation
+```
+
+One agent per user account covers every control-managed service on the machine,
+so it is installed once per Mac rather than once per project. While it is
+missing, `control install` prints a one-line reminder — silence that with
+`CONTROL_NO_LOG_ROTATION_HINT=1`.
+
+Rotation is **copy-truncate, never rename**. launchd opens the log once at
+service start and holds the fd for the life of the process, with no
+reopen-on-signal, so renaming the file leaves the daemon writing into the
+archive while the fresh file stays empty. control snapshots the log with an APFS
+clone, truncates it in place, then compresses the snapshot to `<log>.1.gz`; one
+gzipped generation is kept. Only output written between the clone and the
+truncate is lost — measured at 10 ms against a service writing continuously.
+
+These three commands are macOS-only and exit non-zero elsewhere.
+
 ## Schema
 
 The JSON schema is available at:

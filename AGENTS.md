@@ -80,6 +80,33 @@ this.
 - On macOS launchd, `stop` unloads the plist so `KeepAlive` daemons stay down; `start` reloads an unloaded plist before `launchctl start`, and `restart` is clean stop+start.
 - `type: daemon` → launchd `KeepAlive` + `RunAtLoad` (restart-on-crash, long-running); `type: periodic` → `StartInterval`. No `--version` flag on the CLI.
 
+## Log Rotation (LaunchD backend)
+
+- `control install-log-rotation` installs **one per-user agent**
+  (`control.log-rotation`) that sweeps all of `~/Library/Logs/control`. It is not a
+  per-project service, and it is deliberately explicit — `control install` only prints a
+  nudge when it is missing (`CONTROL_NO_LOG_ROTATION_HINT=1` silences it).
+- Unlike `control install`, this command also **loads** the job. A plist that is only
+  written stays inert until the next login, which would silently mean no rotation for the
+  rest of the session. Documented exception to the install/enable/start separation.
+- Rotation must stay **copy-truncate**. launchd opens `StandardOutPath`/`StandardErrorPath`
+  once at spawn and hands the fd to the service for its lifetime; `lsof +fg` shows
+  `R,W,AP`, i.e. `O_APPEND`. A rename leaves the daemon writing into the renamed inode
+  while the new file stays empty, and nothing reports it. The regression test that
+  protects this asserts the **inode is unchanged** — a rename-based rewrite still leaves a
+  plausible-looking `.gz` behind, so size/archive assertions alone would not catch it.
+- The archive step is `fclonefileat` (APFS copy-on-write, ~2 ms regardless of file size),
+  then `ftruncate`, then gzip the clone — so the loss window is two syscalls rather than
+  the duration of the compression. Measured 10 ms against a service writing flat out.
+  Filesystems without cloning fall back to gzip-a-fixed-prefix-then-truncate.
+- If compression fails *after* the truncate, the clone is kept as `<log>.1` rather than
+  deleted: at that point it is the only copy.
+- The agent's own logs are named to match `control.*.log`, so it rotates itself.
+- `control/logrotate.py` imports `DEFAULT_PATH` from `api.py` at module level, so `api.py`
+  must keep importing `logrotate` **lazily** inside `LaunchD.install()` or it is a cycle.
+- systemd needs nothing here: `service_template` hardcodes `StandardOutput=journal` /
+  `StandardError=journal`, and all three commands exit non-zero on Linux.
+
 ## Systemd Fields
 
 - `systemd:` appends only to the generated `.service` `[Service]` section.
