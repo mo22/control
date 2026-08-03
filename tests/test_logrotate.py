@@ -76,7 +76,7 @@ class RotateFileTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertEqual(path.stat().st_size, before.st_size)
-        self.assertFalse(Path(str(path) + logrotate.ARCHIVE_SUFFIX).exists())
+        self.assertFalse(logrotate.archive_path(path, 1).exists())
 
     def test_dry_run_changes_nothing(self):
         path = write_log(self.dir)
@@ -87,7 +87,7 @@ class RotateFileTests(unittest.TestCase):
         assert result is not None
         self.assertTrue(result.planned)
         self.assertEqual(path.stat().st_size, before)
-        self.assertFalse(Path(str(path) + logrotate.ARCHIVE_SUFFIX).exists())
+        self.assertFalse(logrotate.archive_path(path, 1).exists())
 
     def test_leaves_log_intact_when_it_cannot_archive(self):
         # Losing the log outright is worse than letting it grow to the next
@@ -104,7 +104,7 @@ class RotateFileTests(unittest.TestCase):
         assert result is not None
         self.assertIn("archive failed", result.error or "")
         self.assertEqual(path.read_bytes(), before)
-        self.assertFalse(Path(str(path) + logrotate.ARCHIVE_SUFFIX + ".tmp").exists())
+        self.assertFalse(Path(str(logrotate.archive_path(path, 1)) + ".tmp").exists())
 
     def test_falls_back_to_gzip_then_truncate_without_clonefile(self):
         path = write_log(self.dir)
@@ -146,6 +146,96 @@ class RotateFileTests(unittest.TestCase):
         self.assertEqual(target.stat().st_size, 4096)
 
 
+class ArchiveNamingTests(unittest.TestCase):
+    def test_generation_goes_before_the_extension(self):
+        # So that gunzip yields a file that is still a .log.
+        path = Path("/logs/control.demo.svc.stderr.log")
+
+        self.assertEqual(
+            logrotate.archive_path(path, 1).name, "control.demo.svc.stderr.1.log.gz"
+        )
+        self.assertEqual(
+            logrotate.archive_path(path, 3).name, "control.demo.svc.stderr.3.log.gz"
+        )
+        self.assertEqual(
+            logrotate.archive_path(path, 1, compressed=False).name,
+            "control.demo.svc.stderr.1.log",
+        )
+
+    def test_archives_are_recognised_and_live_logs_are_not(self):
+        self.assertTrue(
+            logrotate.is_archive(Path("control.demo.svc.stderr.1.log.gz"))
+        )
+        # The uncompressed fallback also matches the sweep glob, so it has to be
+        # recognised or the rotator would rotate its own archive.
+        self.assertTrue(logrotate.is_archive(Path("control.demo.svc.stderr.2.log")))
+        self.assertFalse(logrotate.is_archive(Path("control.demo.svc.stderr.log")))
+        self.assertFalse(logrotate.is_archive(Path("control.log-rotation.stdout.log")))
+
+
+class GenerationTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def rotate_n_times(self, count: int, keep: int = 4) -> Path:
+        path = self.dir / "control.demo.svc.stderr.log"
+        for i in range(count):
+            with open(path, "wb") as f:
+                f.write(f"generation {i}\n".encode() * 400)
+            logrotate.rotate_file(path, max_bytes=MAX, keep=keep)
+        return path
+
+    def test_keeps_four_generations_by_default(self):
+        path = self.rotate_n_times(6)
+
+        present = sorted(p.name for p in self.dir.glob("*.gz"))
+        self.assertEqual(
+            present,
+            [
+                "control.demo.svc.stderr.1.log.gz",
+                "control.demo.svc.stderr.2.log.gz",
+                "control.demo.svc.stderr.3.log.gz",
+                "control.demo.svc.stderr.4.log.gz",
+            ],
+        )
+        self.assertEqual(path.stat().st_size, 0)
+
+    def test_generation_1_is_newest_and_the_oldest_is_dropped(self):
+        self.rotate_n_times(6)
+
+        def content(n):
+            return gzip.decompress(logrotate.archive_path(self.dir / "control.demo.svc.stderr.log", n).read_bytes())
+
+        # Six rotations, four kept: .1 holds the newest (generation 5), .4 the
+        # oldest surviving (generation 2). Generations 0 and 1 are gone.
+        self.assertIn(b"generation 5", content(1))
+        self.assertIn(b"generation 4", content(2))
+        self.assertIn(b"generation 3", content(3))
+        self.assertIn(b"generation 2", content(4))
+
+    def test_keep_one_still_works(self):
+        self.rotate_n_times(3, keep=1)
+
+        self.assertEqual(
+            sorted(p.name for p in self.dir.glob("*.gz")),
+            ["control.demo.svc.stderr.1.log.gz"],
+        )
+
+    def test_a_failed_rotation_does_not_disturb_existing_generations(self):
+        path = self.rotate_n_times(2)
+        before = {p.name: p.read_bytes() for p in self.dir.glob("*.gz")}
+
+        write_log(self.dir, size=4096)
+        with patch.object(logrotate, "_clonefile", side_effect=OSError("no clone")):
+            with patch.object(logrotate, "_gzip_prefix", side_effect=OSError("full")):
+                logrotate.rotate_file(path, max_bytes=MAX)
+
+        after = {p.name: p.read_bytes() for p in self.dir.glob("*.gz")}
+        self.assertEqual(after, before)
+
+
 class RotateLogDirTests(unittest.TestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
@@ -155,7 +245,10 @@ class RotateLogDirTests(unittest.TestCase):
     def test_only_control_logs_are_considered(self):
         write_log(self.dir, name="control.demo.svc.stderr.log")
         write_log(self.dir, name="unrelated.log")
-        write_log(self.dir, name="control.demo.svc.stderr.log.1.gz")
+        write_log(self.dir, name="control.demo.svc.stderr.1.log.gz")
+        # An uncompressed archive matches the sweep glob and must be skipped, or
+        # the rotator would rotate its own history.
+        write_log(self.dir, name="control.demo.svc.stdout.2.log")
 
         results = logrotate.rotate_log_dir(self.dir, max_bytes=MAX)
 
@@ -163,6 +256,7 @@ class RotateLogDirTests(unittest.TestCase):
             [r.path.name for r in results], ["control.demo.svc.stderr.log"]
         )
         self.assertEqual((self.dir / "unrelated.log").stat().st_size, 4096)
+        self.assertEqual((self.dir / "control.demo.svc.stdout.2.log").stat().st_size, 4096)
 
     def test_lock_is_not_reentrant(self):
         with logrotate.rotation_lock(self.dir) as first:
@@ -176,14 +270,14 @@ class RotateLogDirTests(unittest.TestCase):
 
 class AgentPlistTests(unittest.TestCase):
     def test_plist_runs_the_rotation_command_on_a_schedule(self):
-        plist = logrotate.agent_plist(max_bytes=123, interval=900)
+        plist = logrotate.agent_plist(max_bytes=123, interval=900, keep=4)
 
         self.assertEqual(plist["Label"], logrotate.LABEL)
         self.assertEqual(plist["StartInterval"], 900)
         self.assertEqual(plist["ProgramArguments"][0], sys.executable)
         self.assertEqual(
             plist["ProgramArguments"][1:],
-            ["-m", "control", "log-rotation", "--max-bytes", "123"],
+            ["-m", "control", "log-rotation", "--max-bytes", "123", "--keep", "4"],
         )
         self.assertTrue(os.access(plist["ProgramArguments"][0], os.X_OK))
 

@@ -185,10 +185,11 @@ def log(ctx, names, follow, since, last):
     default=None,
     help="Rotate logs larger than this (bytes, or 50M / 1G)",
 )
+@click.option("--keep", default=None, type=int, help="Compressed generations to keep")
 @click.option("--dry-run", is_flag=True, help="Report what would be rotated")
-def log_rotation(max_bytes, dry_run):
+def log_rotation(max_bytes, keep, dry_run):
     """Rotate oversized launchd log files (macOS)."""
-    _run_log_rotation(max_bytes=max_bytes, dry_run=dry_run)
+    _run_log_rotation(max_bytes=max_bytes, keep=keep, dry_run=dry_run)
 
 
 @cli.command("install-log-rotation")
@@ -198,9 +199,10 @@ def log_rotation(max_bytes, dry_run):
     help="Rotate logs larger than this (bytes, or 50M / 1G)",
 )
 @click.option("--interval", default=None, help="How often to sweep (e.g. 15m, 1h)")
-def install_log_rotation(max_bytes, interval):
+@click.option("--keep", default=None, type=int, help="Compressed generations to keep")
+def install_log_rotation(max_bytes, interval, keep):
     """Install the launchd agent that rotates service logs (macOS)."""
-    _install_log_rotation(max_bytes=max_bytes, interval=interval)
+    _install_log_rotation(max_bytes=max_bytes, interval=interval, keep=keep)
 
 
 @cli.command("uninstall-log-rotation")
@@ -242,16 +244,19 @@ def _logrotate():
     return logrotate
 
 
-def _run_log_rotation(max_bytes=None, dry_run=False):
+def _run_log_rotation(max_bytes=None, keep=None, dry_run=False):
     lr = _logrotate()
     limit = lr.parse_size(max_bytes) if max_bytes else lr.DEFAULT_MAX_BYTES
+    generations = keep if keep is not None else lr.DEFAULT_KEEP
     directory = lr.log_dir()
 
     with lr.rotation_lock(directory) as acquired:
         if not acquired:
             click.echo("another rotation run is in progress; skipping")
             return
-        results = lr.rotate_log_dir(directory, max_bytes=limit, dry_run=dry_run)
+        results = lr.rotate_log_dir(
+            directory, max_bytes=limit, keep=generations, dry_run=dry_run
+        )
 
     failed = False
     for result in results:
@@ -273,16 +278,20 @@ def _run_log_rotation(max_bytes=None, dry_run=False):
         raise SystemExit(1)
 
 
-def _install_log_rotation(max_bytes=None, interval=None):
+def _install_log_rotation(max_bytes=None, interval=None, keep=None):
     lr = _logrotate()
     limit = lr.parse_size(max_bytes) if max_bytes else lr.DEFAULT_MAX_BYTES
     seconds = lr.parse_interval(interval) if interval else lr.DEFAULT_INTERVAL
+    generations = keep if keep is not None else lr.DEFAULT_KEEP
+    if generations < 1:
+        raise click.ClickException("--keep must be at least 1")
 
-    existed = lr.install_agent(max_bytes=limit, interval=seconds)
+    existed = lr.install_agent(max_bytes=limit, interval=seconds, keep=generations)
     verb = "reinstalled" if existed else "installed"
     click.echo(
         f"{verb} {lr.LABEL}: sweeping {lr.log_dir()} every {seconds}s,"
-        f" rotating logs over {lr.human(limit)}, keeping one gzipped generation"
+        f" rotating logs over {lr.human(limit)},"
+        f" keeping {generations} gzipped generation{'s' if generations != 1 else ''}"
     )
 
 

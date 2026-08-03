@@ -86,6 +86,13 @@ this.
   (`control.log-rotation`) that sweeps all of `~/Library/Logs/control`. It is not a
   per-project service, and it is deliberately explicit — `control install` only prints a
   nudge when it is missing (`CONTROL_NO_LOG_ROTATION_HINT=1` silences it).
+- Archives are `<base>.<n>.log.gz`, **number before the extension**, so `gunzip` yields a
+  file that is still a `.log`. Four generations by default (`--keep`), rolled down on each
+  rotation; generation 1 is the newest. Renaming *archives* is safe — the no-rename rule
+  applies only to the live log, which launchd holds open.
+- Because the uncompressed fallback is `<base>.<n>.log`, it **matches the sweep glob**.
+  `is_archive()` exists to stop the rotator from rotating its own history; a regression
+  there is silent, so `test_only_control_logs_are_considered` covers it.
 - Unlike `control install`, this command also **loads** the job. A plist that is only
   written stays inert until the next login, which would silently mean no rotation for the
   rest of the session. Documented exception to the install/enable/start separation.
@@ -99,8 +106,10 @@ this.
   then `ftruncate`, then gzip the clone — so the loss window is two syscalls rather than
   the duration of the compression. Measured 10 ms against a service writing flat out.
   Filesystems without cloning fall back to gzip-a-fixed-prefix-then-truncate.
-- If compression fails *after* the truncate, the clone is kept as `<log>.1` rather than
-  deleted: at that point it is the only copy.
+- If compression fails *after* the truncate, the clone is kept as `<base>.1.log`
+  (uncompressed) rather than deleted: at that point it is the only copy. Generations are
+  rolled only once the new archive is on disk, so a failed rotation never disturbs the
+  history already there.
 - The agent's own logs are named to match `control.*.log`, so it rotates itself.
 - `control/logrotate.py` imports `DEFAULT_PATH` from `api.py` at module level, so `api.py`
   must keep importing `logrotate` **lazily** inside `LaunchD.install()` or it is a cycle.

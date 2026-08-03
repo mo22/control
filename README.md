@@ -99,11 +99,26 @@ retention. On macOS launchd captures stdout/stderr into plain files under
 rotation agent:
 
 ```bash
-control install-log-rotation                            # every 15 min, rotate over 50 MiB
-control install-log-rotation --max-bytes 200M --interval 1h
+control install-log-rotation                            # every 15 min, over 50 MiB, keep 4
+control install-log-rotation --max-bytes 200M --interval 1h --keep 2
 control log-rotation --dry-run                          # what would be rotated right now
 control uninstall-log-rotation
 ```
+
+Archives are numbered before the extension, so a decompressed archive is still a
+`.log` file:
+
+```
+control.myproject.web.stderr.log          ← live
+control.myproject.web.stderr.1.log.gz     ← most recent generation
+control.myproject.web.stderr.2.log.gz
+control.myproject.web.stderr.3.log.gz
+control.myproject.web.stderr.4.log.gz     ← oldest kept; dropped on the next rotation
+```
+
+stdout and stderr rotate independently, so a service has at most `2 * (keep + 1)`
+files. Worst case on disk per stream is the trigger size plus one sweep interval
+of growth, plus `keep` compressed archives.
 
 One agent per user account covers every control-managed service on the machine,
 so it is installed once per Mac rather than once per project. While it is
@@ -114,9 +129,10 @@ Rotation is **copy-truncate, never rename**. launchd opens the log once at
 service start and holds the fd for the life of the process, with no
 reopen-on-signal, so renaming the file leaves the daemon writing into the
 archive while the fresh file stays empty. control snapshots the log with an APFS
-clone, truncates it in place, then compresses the snapshot to `<log>.1.gz`; one
-gzipped generation is kept. Only output written between the clone and the
+clone, truncates it in place, then compresses the snapshot into generation 1,
+rolling the older ones down. Only output written between the clone and the
 truncate is lost — measured at 10 ms against a service writing continuously.
+Rotating the *archives* by rename is fine: nothing holds those open.
 
 These three commands are macOS-only and exit non-zero elsewhere.
 

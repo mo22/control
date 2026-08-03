@@ -44,14 +44,17 @@ from .api import DEFAULT_PATH
 
 LABEL = "control.log-rotation"
 LOG_GLOB = "control.*.log"
+LOG_EXT = ".log"
 DEFAULT_MAX_BYTES = 50 * 1024 * 1024
 DEFAULT_INTERVAL = 900
+DEFAULT_KEEP = 4
 HINT_ENV = "CONTROL_NO_LOG_ROTATION_HINT"
 
 CLONE_SUFFIX = ".rotating"
-ARCHIVE_SUFFIX = ".1.gz"
-PLAIN_SUFFIX = ".1"
 LOCK_NAME = ".log-rotation.lock"
+# <base>.<n>.log[.gz] — matches what archive_path() builds, and is what keeps the
+# sweep from treating its own archives as logs to rotate.
+ARCHIVE_RE = re.compile(r"\.\d+\.log$")
 
 AT_FDCWD = -2  # Darwin value; see <fcntl.h>
 COPY_CHUNK = 1024 * 1024
@@ -130,6 +133,45 @@ def parse_interval(value: str | int) -> int:
     return seconds
 
 
+def archive_path(path: Path, generation: int, compressed: bool = True) -> Path:
+    """Archive name for a generation: ``<base>.<n>.log`` plus ``.gz``.
+
+    The generation number goes *before* the extension so that decompressing an
+    archive still yields a ``.log`` file.
+    """
+    name = path.name
+    base = name[: -len(LOG_EXT)] if name.endswith(LOG_EXT) else name
+    suffix = f".{generation}{LOG_EXT}" + (".gz" if compressed else "")
+    return path.with_name(base + suffix)
+
+
+def is_archive(path: Path) -> bool:
+    """True for our own archives, which must never be rotated again.
+
+    Uncompressed archives end in ``.log`` and would otherwise be picked up by
+    the sweep glob.
+    """
+    name = path.name[: -len(".gz")] if path.name.endswith(".gz") else path.name
+    return bool(ARCHIVE_RE.search(name))
+
+
+def shift_generations(path: Path, keep: int) -> None:
+    """Roll ``.1`` → ``.2`` … and drop anything past ``keep``.
+
+    Archives are closed files that nothing holds open, so plain renames are safe
+    here — the no-rename rule applies only to the live log.
+    """
+    for generation in range(keep, 0, -1):
+        for compressed in (True, False):
+            src = archive_path(path, generation, compressed)
+            if not src.exists():
+                continue
+            if generation >= keep:
+                src.unlink()
+            else:
+                os.replace(src, archive_path(path, generation + 1, compressed))
+
+
 def human(size: float) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024 or unit == "GB":
@@ -164,26 +206,28 @@ def _clonefile(src_fd: int, dst: Path) -> None:
         raise OSError(err, os.strerror(err), str(dst))
 
 
-def _gzip_to(src: Path, dst: Path) -> None:
-    tmp = Path(str(dst) + ".tmp")
+def _tmp_archive(path: Path) -> Path:
+    return Path(str(archive_path(path, 1)) + ".tmp")
+
+
+def _gzip_to(src: Path, tmp: Path) -> None:
+    """Compress a snapshot into ``tmp``. The caller publishes it."""
     try:
         with open(src, "rb") as fsrc, gzip.open(tmp, "wb") as fdst:
             shutil.copyfileobj(fsrc, fdst, COPY_CHUNK)
             fdst.flush()
             os.fsync(fdst.fileno())
-        os.replace(tmp, dst)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
 
 
-def _gzip_prefix(src_fd: int, dst: Path, length: int) -> None:
+def _gzip_prefix(src_fd: int, tmp: Path, length: int) -> None:
     """Compress exactly ``length`` bytes from the start of an open file.
 
     The fixed length matters: without it a fast writer keeps moving EOF and the
     archive never ends.
     """
-    tmp = Path(str(dst) + ".tmp")
     try:
         remaining = length
         with gzip.open(tmp, "wb") as fdst:
@@ -196,7 +240,6 @@ def _gzip_prefix(src_fd: int, dst: Path, length: int) -> None:
                 remaining -= len(chunk)
             fdst.flush()
             os.fsync(fdst.fileno())
-        os.replace(tmp, dst)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
@@ -205,12 +248,16 @@ def _gzip_prefix(src_fd: int, dst: Path, length: int) -> None:
 def rotate_file(
     path: Path,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    keep: int = DEFAULT_KEEP,
     dry_run: bool = False,
 ) -> Rotation | None:
     """Rotate one log file if it is over ``max_bytes``.
 
-    Returns None when the file is untouched (too small, not a regular file).
+    Returns None when the file is untouched (too small, not a regular file, or
+    one of our own archives).
     """
+    if is_archive(path):
+        return None
     try:
         fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW)
     except OSError as exc:
@@ -226,7 +273,8 @@ def rotate_file(
         if dry_run:
             return Rotation(path, size, planned=True)
 
-        archive = Path(str(path) + ARCHIVE_SUFFIX)
+        archive = archive_path(path, 1)
+        tmp = _tmp_archive(path)
         clone = Path(str(path) + CLONE_SUFFIX)
         clone.unlink(missing_ok=True)
 
@@ -238,9 +286,11 @@ def rotate_file(
             # classic copy-truncate trade-off applies -- lines written during
             # the compression are lost.
             try:
-                _gzip_prefix(fd, archive, size)
+                _gzip_prefix(fd, tmp, size)
             except Exception as exc:
                 return Rotation(path, size, error=f"archive failed: {exc}")
+            shift_generations(path, keep)
+            os.replace(tmp, archive)
             os.ftruncate(fd, 0)
             return Rotation(path, size, archive=archive, compressed=True)
 
@@ -249,11 +299,12 @@ def rotate_file(
         os.ftruncate(fd, 0)
 
         try:
-            _gzip_to(clone, archive)
+            _gzip_to(clone, tmp)
         except Exception as exc:
             # The data is already out of the live file; keep the uncompressed
             # snapshot rather than deleting the only copy.
-            fallback = Path(str(path) + PLAIN_SUFFIX)
+            shift_generations(path, keep)
+            fallback = archive_path(path, 1, compressed=False)
             try:
                 os.replace(clone, fallback)
             except OSError:
@@ -267,6 +318,10 @@ def rotate_file(
                 error=f"compression failed, kept uncompressed: {exc}",
             )
 
+        # Roll the older generations only once the new archive is on disk, so a
+        # failed compression never disturbs the history that is already there.
+        shift_generations(path, keep)
+        os.replace(tmp, archive)
         clone.unlink(missing_ok=True)
         return Rotation(path, size, archive=archive, compressed=True, cloned=True)
     finally:
@@ -276,13 +331,14 @@ def rotate_file(
 def rotate_log_dir(
     directory: Path | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    keep: int = DEFAULT_KEEP,
     dry_run: bool = False,
 ) -> list[Rotation]:
     """Rotate every oversized control log in ``directory``."""
     directory = directory or log_dir()
     results = []
     for path in sorted(directory.glob(LOG_GLOB)):
-        result = rotate_file(path, max_bytes=max_bytes, dry_run=dry_run)
+        result = rotate_file(path, max_bytes=max_bytes, keep=keep, dry_run=dry_run)
         if result is not None:
             results.append(result)
     return results
@@ -312,7 +368,9 @@ def rotation_lock(directory: Path):
 
 
 def agent_plist(
-    max_bytes: int = DEFAULT_MAX_BYTES, interval: int = DEFAULT_INTERVAL
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    interval: int = DEFAULT_INTERVAL,
+    keep: int = DEFAULT_KEEP,
 ) -> dict:
     """Plist for the per-user rotation agent.
 
@@ -329,6 +387,8 @@ def agent_plist(
             "log-rotation",
             "--max-bytes",
             str(max_bytes),
+            "--keep",
+            str(keep),
         ],
         "StartInterval": interval,
         "StandardOutPath": str(logs / f"{LABEL}.stdout.log"),
@@ -345,7 +405,9 @@ def agent_plist(
 
 
 def install_agent(
-    max_bytes: int = DEFAULT_MAX_BYTES, interval: int = DEFAULT_INTERVAL
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    interval: int = DEFAULT_INTERVAL,
+    keep: int = DEFAULT_KEEP,
 ) -> bool:
     """Install and load the rotation agent. Returns True if it already existed.
 
@@ -362,7 +424,7 @@ def install_agent(
     if existed:
         subprocess.run(["launchctl", "unload", str(path)], capture_output=True)
     with open(path, "wb") as f:
-        plistlib.dump(agent_plist(max_bytes, interval), f)
+        plistlib.dump(agent_plist(max_bytes, interval, keep), f)
     subprocess.run(["launchctl", "load", str(path)], check=True)
     return existed
 
