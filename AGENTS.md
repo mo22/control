@@ -8,9 +8,9 @@
 ## Deploying to Linux servers
 
 **One install per host**, system-wide at `/usr/local/share/uv/tools/control`
-(symlinked to `/usr/local/bin/control`). As of 2026-07-31 all six servers
+(symlinked to `/usr/local/bin/control`). As of 2026-08-03 all six servers
 (kirk, alpha, delta, clippy, lemon, spock-ubuntu) are on exactly that, running
-0.8; the per-user copies under `~/.local/share/uv/tools` were removed.
+0.10, with no per-user copies under `~/.local/share/uv/tools` on any of them.
 
 This applies to the **servers**. The MacBook intentionally keeps a per-user
 install (`~/.local/share/uv/tools`) — it is single-user, and the launchd backend
