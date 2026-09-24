@@ -1,9 +1,12 @@
 # macOS stop semantics: explicit ExitTimeOut, then a supervisor (tree kill + log rotation)
 
-Status: **Step 1 done** (2026-09-24, session 01KvuMbh), **Step 2 proposal ready
-for Moritz** — created 2026-09-24, dispatched from agent-setup session dc961425.
-Step 1 is implemented, tested and verified with a scratch service (below). Step 2
-is a design proposal (below) that Moritz confirms before anything is built.
+Status: **Step 1 done** (2026-09-24, session 01KvuMbh); **Step 2 design agreed,
+v1 build not yet started** — created 2026-09-24, dispatched from agent-setup
+session dc961425. Step 1 is implemented, tested and verified with a scratch
+service (below), and its `ExitTimeOut=30` was rolled out to the live macOS
+services (below). Step 2's design is settled with Moritz (macOS-only, opt-in,
+tree-kill in v1 with pgid-reap, logging deferred to v2); building v1 is a fresh
+task still to be approved.
 
 ## Why
 
@@ -133,19 +136,19 @@ below. Once validated on the fileindex FDA service, making it the default for
 ```
 
 and, next to the plist, a **sidecar JSON** holding everything already resolved at
-install time: the service argv, the env dict, cwd, the two log paths, rotation
-settings, and the grace period. At boot the supervisor reads only that sidecar
-(stdlib `json`) — it never re-parses `control.yaml`, so it pulls in **no pydantic,
-no PyYAML, no click, no network**. Interpreter is pinned to `/usr/bin/python3`
-(system, always present, no uv/uvx, so the columbo proxy is never on the boot
-path). `supervisor.py` is stdlib-only.
+install time: the service argv, the env dict, cwd, the two log paths, and the
+grace period. At boot the supervisor reads only that sidecar (stdlib `json`) — it
+never re-parses `control.yaml`, so it pulls in **no pydantic, no PyYAML, no click,
+no network**. Interpreter is pinned to `/usr/bin/python3` (system, always present,
+no uv/uvx, so the columbo proxy is never on the boot path). `supervisor.py` is
+stdlib-only.
 
-At start the supervisor: opens two pipes (stdout, stderr); forks the service into
-a **new session** (`setsid`, so it has its own pgid); records that pgid to a state
-file next to the sidecar; installs a `SIGTERM` handler; then runs a `select()`
-loop draining both pipes into the log files. It **owns the fds**, so it rotates by
-size with plain rename + reopen — no copy-truncate, no separate
-`control.log-rotation` agent needed for supervised services.
+At start the supervisor (v1, tree-kill only): forks the service into a **new
+session** (`setsid`, so it has its own pgid); records that pgid to a state file
+next to the sidecar; installs a `SIGTERM` handler; then `waitpid`s. It does **not**
+touch stdout/stderr — the child inherits launchd's `StandardOutPath`/
+`StandardErrorPath` fds exactly as today, and the existing copy-truncate
+`control.log-rotation` agent keeps rotating them. See "Logging is decoupled" below.
 
 On `SIGTERM` (from launchd on `control stop`): enumerate all descendants by
 walking the **ppid tree** (not the process group — that is exactly what
@@ -167,6 +170,32 @@ the child grace period, and when a service is supervised `control install` sets
 the plist `ExitTimeOut = stop_timeout + 5` (margin for the ps walk + the
 supervisor's own exit). So `ExitTimeOut` stays the outer bound and the supervisor
 always wins the race.
+
+### Logging is decoupled from tree-kill (decided 2026-09-24)
+
+The original idea #2 had the supervisor own stdout/stderr and rotate by
+rename+reopen. **Split out: v1 does tree-kill only; log ownership is a separate,
+later opt-in.** Tree-kill works by walking the ppid tree at stop time and needs
+**no pipe ownership** — the child can write straight to launchd's log fds. Owning
+the pipes only buys the rotation improvement (rename+reopen instead of
+copy-truncate, and retiring the `control.log-rotation` agent), and it carries real
+cost:
+
+- **Backpressure regression.** A file fd never blocks the writer; a pipe does. If
+  the supervisor stalls draining, a chatty service fills the 64 KiB pipe buffer and
+  **blocks on `write()`** — a supervisor stall would now stall the service. That
+  coupling does not exist today.
+- **Boot-path surface.** A `select()` drain loop is more stdlib code in the
+  boot-critical path of every supervised daemon — more ways to wedge at boot for no
+  incident-related gain (the incident was orphans, not logs).
+- **Two rotators during migration** anyway (agent for unsupervised, supervisor for
+  supervised).
+
+So: `supervise: true` = tree-kill only (v1). A later `log_rotate`/`supervise_logs`
+opt-in adds supervisor-owned pipes + rename rotation once tree-kill and the TCC
+check are proven. Only that later phase settles `tasks/log-rotation-liveness.md`;
+until then it stands. Building pipes in later is a bigger change than doing it
+upfront, but the lower-risk staged path wins given the boot-criticality.
 
 ### Answers to the open questions
 
@@ -201,47 +230,58 @@ always wins the race.
    supervised copy of the fileindex FDA service and confirm it still resolves FDA
    (read a TCC-protected path). Keeping the feature opt-in until this passes is
    why opt-in is the recommended rollout, not default-on.
-5. **Output buffering.** No change: a pipe and a file are both non-TTY, so libc
-   block-buffers identically; services that already set `PYTHONUNBUFFERED`/flush
-   keep working. The one new requirement is on *our* side — the supervisor must
-   drain both pipes continuously (the `select()` loop), or a service that fills
-   the 64 KiB pipe buffer blocks on write. Two separate pipes keep stdout/stderr
-   distinct as today.
+5. **Output buffering.** Moot in v1 — the child keeps launchd's file fds, so
+   buffering is unchanged. It only matters in the later log-ownership phase: a pipe
+   and a file are both non-TTY so libc block-buffers identically, but then the
+   supervisor must drain both pipes continuously (a `select()` loop) or a chatty
+   service fills the 64 KiB pipe buffer and blocks on write. Two separate pipes
+   keep stdout/stderr distinct. (This backpressure cost is the main reason logging
+   is deferred out of v1 — see "Logging is decoupled".)
 6. **Intentionally detached helpers.** Tree kill also kills helpers meant to
    outlive the service — the same trade-off as `KillMode=mixed`. Opt-out is simply
    `supervise: false` (the default): that service runs its command directly, as
    now. A finer "leave this one child" mark is not worth the intent-detection
    complexity; a service that needs a surviving helper should double-fork it under
    `launchd`/its own job instead.
-7. **Where rotation settings live.** Global defaults stay (today's
-   `install-log-rotation` defaults: 50 MiB, keep 4), overridable per service in
-   `control.yaml` (e.g. `log_rotate: {max_bytes, keep}`). Supervised services
-   rotate themselves via rename+reopen (the supervisor holds the fd, so the
-   launchd-fd-liveness problem in `tasks/log-rotation-liveness.md` **does not
-   apply to them** — that is the settlement noted in Step 2's intro). The existing
-   `control.log-rotation` sweep agent stays for non-supervised/legacy logs; a
-   supervised service's live log must be **excluded from that sweep** (it is
-   already being rotated, and a copy-truncate from the agent racing the
-   supervisor's rename would be a conflict). Simplest exclusion: the supervisor
-   writes supervised logs under a subdir (e.g. `~/Library/Logs/control/supervised/`)
-   that the global sweep glob skips, or drops a marker the sweep honours. Retire
-   the global agent only once nothing is left unsupervised.
+7. **Where rotation settings live.** In v1, nowhere new: logs stay on launchd's
+   file fds and the existing `control.log-rotation` agent (global defaults 50 MiB,
+   keep 4) rotates them by copy-truncate, exactly as now — no change for supervised
+   or unsupervised services. This question reopens only with the later
+   log-ownership phase, where the plan is: global defaults stay, overridable per
+   service in `control.yaml` (e.g. `log_rotate: {max_bytes, keep}`); the supervisor
+   rotates its owned logs by rename+reopen; and a supervised log must be **excluded
+   from the sweep agent** to avoid a copy-truncate-vs-rename race. Recommended
+   exclusion for that phase: write supervised logs under a subdir
+   (`~/Library/Logs/control/supervised/`) that the global sweep glob skips —
+   explicit and race-free, versus a marker file. Retire the global agent only once
+   nothing is left unsupervised.
 
 ### Rollout plan (once confirmed)
 
-1. Add `supervise: bool` + `log_rotate` to the model; `control install` writes the
-   sidecar + wrapped `ProgramArguments` + bumped `ExitTimeOut` only when
-   `supervise: true` on the launchd backend.
-2. `control/supervisor.py`, stdlib-only, with unit tests driven by a scripted
-   fake service (a child that spawns a `setsid` grandchild which ignores SIGTERM —
-   assert the grandchild is dead after stop, reproducing the incident).
+**v1 — tree-kill only:**
+1. Add `supervise: bool` to the model; on the launchd backend `control install`
+   writes the sidecar + wrapped `ProgramArguments` + bumped `ExitTimeOut` only when
+   `supervise: true`.
+2. `control/supervisor.py`, stdlib-only, tree-kill + pgid-reap-on-restart, with
+   unit tests driven by a scripted fake service (a child that spawns a `setsid`
+   grandchild which ignores SIGTERM — assert the grandchild is dead after stop,
+   reproducing the incident).
 3. Validate TCC on the fileindex FDA service (question 4) **before** default-on.
 4. Only then consider defaulting `type: daemon` on macOS to supervised.
 
-**Open decisions for Moritz:** (a) opt-in `supervise: true` first vs. straight to
-default-on for macOS daemons; (b) the `stop_timeout + 5` ExitTimeOut margin; (c)
-supervised-log location for sweep exclusion (subdir vs. marker); (d) whether the
-pgid-reap-on-restart mitigation (question 2) is in the first cut or deferred.
+**v2 — log ownership (separate, later):** add a `log_rotate`/`supervise_logs`
+opt-in, supervisor-owned pipes + rename rotation, supervised-log subdir excluded
+from the sweep agent. Settles `tasks/log-rotation-liveness.md`. Only after v1 is
+proven.
+
+**Decided with Moritz (2026-09-24):** (a) opt-in `supervise: true` first, then
+default-on after the TCC check; (b) `ExitTimeOut = stop_timeout + 5`; (c)
+supervised-log subdir (not a marker) — but in v2; (d) pgid-reap-on-restart is in
+the v1 cut; (e) **logging/rotation is decoupled** — tree-kill in v1, log ownership
+deferred to v2.
+
+**Still open:** whether to build v1 now (a fresh implementation task), and the
+final field name for the v2 logging opt-in.
 
 ## Live macOS services that would need a `control install` to pick up ExitTimeOut
 
