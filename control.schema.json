@@ -1,153 +1,332 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/mo22/control/master/control.schema.json",
-  "title": "control.yaml",
-  "description": "Configuration schema for control process manager",
-  "type": "object",
-  "required": ["name", "version"],
-  "additionalProperties": false,
-  "properties": {
-    "name": {
-      "type": "string",
-      "description": "Name of the configuration"
-    },
-    "version": {
-      "type": "string",
-      "const": "https://github.com/mo22/control",
-      "description": "Schema version identifier"
-    },
-    "env": {
-      "type": "object",
-      "description": "Environment variables available for substitution using {VAR} syntax",
-      "additionalProperties": {
-        "oneOf": [
-          { "type": "string" },
-          { "type": "integer" },
-          { "type": "boolean" }
-        ]
-      }
-    },
-    "groups": {
-      "type": "object",
-      "description": "Named groups of services",
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" }
-      }
-    },
-    "services": {
-      "type": "object",
-      "description": "Service definitions",
-      "additionalProperties": {
-        "$ref": "#/$defs/service"
-      }
-    }
-  },
   "$defs": {
-    "service": {
-      "type": "object",
-      "description": "Service configuration",
-      "additionalProperties": false,
-      "oneOf": [
-        { "required": ["cmd"] },
-        { "required": ["run"] },
-        { "required": ["shell"] }
-      ],
+    "ServiceModel": {
+      "description": "Model for a service configuration.",
       "properties": {
         "cmd": {
-          "type": "string",
-          "description": "Command executable path"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cmd"
         },
         "args": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Arguments for cmd"
+          "items": {
+            "type": "string"
+          },
+          "title": "Args",
+          "type": "array"
         },
         "run": {
-          "type": "string",
-          "description": "Shell command string to parse and execute"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Run"
         },
         "shell": {
-          "type": "string",
-          "description": "Shell script to execute via /bin/sh -c"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shell"
         },
         "env": {
-          "type": "object",
-          "description": "Service-specific environment variables. Values can reference {user.VAR} from the install environment or {sys.PATH} from control's built-in fallback path.",
-          "additionalProperties": { "type": "string" }
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Env",
+          "type": "object"
         },
         "cwd": {
-          "type": "string",
-          "description": "Working directory for the service"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cwd"
         },
         "user": {
-          "oneOf": [
-            { "const": "dynamic", "description": "Create a dynamic user" },
-            { "type": "string", "description": "Run as specific user" }
+          "anyOf": [
+            {
+              "const": "dynamic",
+              "type": "string"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "description": "User to run the service as"
+          "default": null,
+          "title": "User"
         },
         "type": {
-          "type": "string",
-          "enum": ["daemon", "periodic", "cron"],
-          "description": "Service type: daemon (long-running), periodic (interval-based), or cron (schedule-based)"
+          "anyOf": [
+            {
+              "enum": [
+                "daemon",
+                "periodic",
+                "cron"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
         },
         "systemd": {
-          "type": "string",
-          "description": "Extra directives appended to the [Service] section of the generated .service unit"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemd"
         },
         "systemd_unit": {
-          "type": "string",
-          "description": "Extra directives appended to the [Unit] section of the generated .service unit (e.g. OnFailure=, Requires=, BindsTo=)"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemd Unit"
         },
         "systemd_timer": {
-          "type": "string",
-          "description": "Extra directives appended to the [Timer] section of the generated .timer unit"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemd Timer"
         },
         "systemd_timer_unit": {
-          "type": "string",
-          "description": "Extra directives appended to the [Unit] section of the generated .timer unit"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Systemd Timer Unit"
         },
         "interval": {
-          "type": "string",
-          "description": "Interval between runs for periodic services (e.g., '5m', '1h')"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interval"
         },
         "first_interval": {
-          "type": "string",
-          "description": "Initial delay before first run"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Interval"
         },
         "random_delay": {
-          "type": "string",
-          "description": "Random delay added to interval"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Random Delay"
         },
         "cron": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" } }
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "description": "Cron schedule expression(s)"
+          "default": null,
+          "title": "Cron"
         },
         "max_cpu": {
-          "type": "string",
-          "description": "CPU limit (e.g., '50%')"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cpu"
         },
         "max_memory": {
-          "type": "string",
-          "description": "Memory limit (e.g., '512M')"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Memory"
         },
         "max_time": {
-          "type": "string",
-          "description": "Maximum runtime limit"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Time"
         },
         "nofile": {
-          "type": "integer",
-          "description": "File descriptor limit"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nofile"
         },
         "syslog": {
-          "type": "string",
-          "description": "Syslog identifier"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Syslog"
+        },
+        "stop_timeout": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Timeout"
         }
-      }
+      },
+      "title": "ServiceModel",
+      "type": "object"
     }
-  }
+  },
+  "description": "Model for the control.yaml configuration.",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "const": "https://github.com/mo22/control",
+      "title": "Version",
+      "type": "string"
+    },
+    "services": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ServiceModel"
+      },
+      "title": "Services",
+      "type": "object"
+    },
+    "env": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Env",
+      "type": "object"
+    },
+    "groups": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Groups",
+      "type": "object"
+    }
+  },
+  "required": [
+    "name",
+    "version"
+  ],
+  "title": "ConfigModel",
+  "type": "object"
 }

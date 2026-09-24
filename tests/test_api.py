@@ -161,6 +161,53 @@ class ServiceEnvTests(unittest.TestCase):
         )
 
 
+def make_service_with(**overrides) -> Service:
+    model = ConfigModel(
+        name="test",
+        version="https://github.com/mo22/control",
+        services={
+            "demo": ServiceModel(shell="echo ok", type="daemon", **overrides)
+        },
+    )
+    config = Config(model, "/tmp/control.yaml")
+    service = config.get_service("demo")
+    assert service is not None
+    return service
+
+
+class StopTimeoutTests(unittest.TestCase):
+    def _plist(self, service: Service) -> dict:
+        backend = object.__new__(LaunchD)
+        backend._detect_path = lambda: "/usr/bin:/bin"
+        backend._get_log_files = lambda service: (Path("/tmp/stdout"), Path("/tmp/stderr"))
+        return backend._generate_plist(service)
+
+    def _systemd(self, service: Service) -> str:
+        backend = SystemD()
+        backend.systemd_version = lambda: 245
+        return backend.service_template(service)
+
+    def test_stop_timeout_defaults_to_30(self):
+        self.assertEqual(make_service().stop_timeout, 30)
+
+    def test_stop_timeout_reads_explicit_value(self):
+        self.assertEqual(make_service_with(stop_timeout=90).stop_timeout, 90)
+
+    def test_plist_sets_default_exit_timeout(self):
+        self.assertEqual(self._plist(make_service())["ExitTimeOut"], 30)
+
+    def test_plist_sets_configured_exit_timeout(self):
+        plist = self._plist(make_service_with(stop_timeout=90))
+        self.assertEqual(plist["ExitTimeOut"], 90)
+
+    def test_systemd_uses_default_timeout_stop_sec(self):
+        self.assertIn("TimeoutStopSec=30\n", self._systemd(make_service()))
+
+    def test_systemd_uses_configured_timeout_stop_sec(self):
+        template = self._systemd(make_service_with(stop_timeout=90))
+        self.assertIn("TimeoutStopSec=90\n", template)
+
+
 class ExecutableArgsTests(unittest.TestCase):
     def test_explicit_symlink_path_stays_unresolved(self):
         target = shutil.which("true")

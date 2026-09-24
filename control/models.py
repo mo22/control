@@ -108,6 +108,7 @@ class ServiceModel(ExecutableModel):
     max_time: str | None = None
     nofile: int | None = None
     syslog: str | None = None
+    stop_timeout: int | None = None
 
 
 class ConfigModel(BaseModel):

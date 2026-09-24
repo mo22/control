@@ -79,6 +79,7 @@ this.
 - Renaming a service key orphans the old unit: control only manages services present in the *current* config. To swap (e.g. periodic→daemon under a new name) you must tear down the old one yourself — on macOS `launchctl bootout gui/$UID/control.<name>.<svc>` + remove `~/Library/LaunchAgents/control.<name>.<svc>.plist`.
 - On macOS launchd, `stop` unloads the plist so `KeepAlive` daemons stay down; `start` reloads an unloaded plist before `launchctl start`, and `restart` is clean stop+start.
 - `type: daemon` → launchd `KeepAlive` + `RunAtLoad` (restart-on-crash, long-running); `type: periodic` → `StartInterval`. No `--version` flag on the CLI.
+- **Stop grace period:** `_generate_plist` sets launchd `ExitTimeOut` and `service_template` sets systemd `TimeoutStopSec`, both to `service.stop_timeout` (default 30 s, per-service `stop_timeout:` in `control.yaml`). launchd's own default is ~5 s, too short for real SIGTERM teardown. On macOS launchd SIGKILLs **only the main pid** after this timeout — the process group gets one SIGTERM and no SIGKILL, and descendants that left the group (setsid/`uv run`) survive as PID-1 orphans; control does **not** reap subprocesses on macOS the way `KillMode=mixed` does on systemd. Supervisor design in `tasks/macos-stop-semantics-and-supervisor.md`.
 
 ## Log Rotation (LaunchD backend)
 

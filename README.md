@@ -91,6 +91,34 @@ started outside systemd (e.g. via a user-session `run.sh`) is not in any
 tracked cgroup, and orphaned children there will keep running until killed
 manually.
 
+**On macOS (launchd) there is no cgroup and this guarantee does not hold.**
+On stop, launchd sends `SIGTERM` to the job's main process and, after the
+`ExitTimeOut` grace period, `SIGKILL`s **the main process only**. The job's
+process group receives at most a single `SIGTERM` and never a `SIGKILL`, and a
+descendant that left the group (via `setsid`/`setpgid`, as `uv run` and many
+wrappers do) is not signalled at all. A subprocess that ignores `SIGTERM` — or
+whose parent is killed before it can reap it — therefore survives as an orphan
+reparented to PID 1. On macOS a service is responsible for tearing down its own
+subprocesses when it receives `SIGTERM`; control does not do it for you. (A
+supervisor that kills the whole descendant tree on stop is under design — see
+`tasks/macos-stop-semantics-and-supervisor.md`.)
+
+### Stop grace period
+
+Both backends wait a grace period between `SIGTERM` and `SIGKILL` on stop:
+systemd's `TimeoutStopSec` and launchd's `ExitTimeOut`. control sets both to
+**30 s** by default (launchd's own default is much shorter — 5 s was observed
+for control's jobs — which is too little for a daemon that does real teardown).
+Override it per service with `stop_timeout` (seconds):
+
+```yaml
+services:
+  web:
+    type: daemon
+    run: ./server
+    stop_timeout: 60
+```
+
 ## Log rotation (macOS)
 
 On the systemd backend service output goes to journald, which enforces its own

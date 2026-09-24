@@ -150,6 +150,16 @@ class Service:
         """Get syslog flag."""
         return self.model.syslog
 
+    @property
+    def stop_timeout(self) -> int:
+        """Get the stop grace period in seconds before the backend SIGKILLs.
+
+        Defaults to 30 s, matching the systemd ``TimeoutStopSec`` default and
+        giving a daemon time to finish its SIGTERM path before launchd/systemd
+        escalates to SIGKILL.
+        """
+        return self.model.stop_timeout if self.model.stop_timeout is not None else 30
+
 
 class Config:
     """Configuration wrapper that combines model and path."""
@@ -417,7 +427,7 @@ class SystemD(Backend):
         # by a parent crash or a misbehaving cron script) are reaped on
         # stop/exit instead of leaking out of the unit's cgroup.
         tpl += "KillMode=mixed\n"
-        tpl += "TimeoutStopSec=30\n"
+        tpl += f"TimeoutStopSec={service.stop_timeout}\n"
         tpl += "StandardOutput=journal\n"
         tpl += "StandardError=journal\n"
         if service.syslog:
@@ -772,6 +782,13 @@ class LaunchD(Backend):
                 {"PATH": DEFAULT_PATH},
             ),
             "ProcessType": "Background",
+            # Grace period between SIGTERM and SIGKILL on stop. launchd's own
+            # default is short (5 s observed for control's jobs) — too little
+            # for a daemon that does real teardown on SIGTERM. Match the
+            # systemd TimeoutStopSec so both backends behave the same. Note:
+            # launchd only SIGKILLs the main pid here, so this is not a
+            # subprocess-cleanup guarantee (see the supervisor design).
+            "ExitTimeOut": service.stop_timeout,
         }
 
         if service.type == "daemon":
